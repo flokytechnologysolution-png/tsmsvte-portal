@@ -1294,23 +1294,34 @@
   /* --------------------------------------------------------------------- *
    * User accounts (role changes are OWNER-only)                           *
    * --------------------------------------------------------------------- */
-  const userFilters = { q: '', role: '' };
+  const userFilters = { q: '', role: '', grantable: [] };
+
+  const ROLE_LABEL = {
+    OWNER: 'Owner', ADMIN: 'Ministry admin', LGA_OFFICER: 'LGA officer',
+    SCHOOL_ADMIN: 'School admin', EDITOR: 'Editor', STAFF: 'Staff'
+  };
+  const ROLE_BADGE = {
+    OWNER: 'ok', ADMIN: 'info', LGA_OFFICER: 'info', SCHOOL_ADMIN: 'info',
+    EDITOR: 'muted', STAFF: 'muted'
+  };
 
   function loadUsers() {
+    /* OWNER is never offered in the filter: to a non-owner that account does
+     * not exist at all, and the owner has their own section. */
+    const filterRoles = ['ADMIN', 'LGA_OFFICER', 'SCHOOL_ADMIN', 'EDITOR', 'STAFF'];
     section('users', 'User accounts',
       '<div class="filter-bar">' +
         '<div class="field grow"><label for="us-q">Search</label>' +
           '<input type="search" id="us-q" placeholder="Name, email or portal address…" value="' + App.esc(userFilters.q) + '"></div>' +
         '<div class="field"><label for="us-role">Role</label><select id="us-role">' +
-          '<option value="">All roles</option><option value="OWNER">Owner</option>' +
-          '<option value="ADMIN">Admin</option><option value="EDITOR">Editor</option>' +
-          '<option value="STAFF">Staff</option></select></div>' +
+          '<option value="">All roles</option>' +
+          filterRoles.map(function (r) {
+            return '<option value="' + r + '">' + App.esc(ROLE_LABEL[r] || r) + '</option>';
+          }).join('') +
+        '</select></div>' +
+        '<button class="btn" type="button" id="us-new" disabled>+ Add account</button>' +
       '</div>' +
-      (role === 'OWNER'
-        ? '<p class="kv-note">As the owner you can change roles and suspend accounts. The owner account ' +
-          'itself is only ever changed through the transfer-of-ownership flow.</p>'
-        : '<p class="kv-note">Only the owner may change roles or suspend accounts. You can still issue ' +
-          'password reset tokens.</p>') +
+      '<p class="kv-note" id="us-hint"></p>' +
       '<div id="us-rows"><div class="empty-state"><strong>Loading…</strong></div></div>');
 
     document.getElementById('us-role').value = userFilters.role;
@@ -1321,6 +1332,7 @@
     App.on(document.getElementById('us-role'), 'change', function () {
       userFilters.role = this.value; renderUserRows();
     });
+    App.on(document.getElementById('us-new'), 'click', function () { createAccountForm(); });
     renderUserRows();
   }
 
@@ -1333,26 +1345,46 @@
     if (userFilters.q) parts.push('q=' + encodeURIComponent(userFilters.q));
 
     App.api('/api/staff/users/list' + (parts.length ? '?' + parts.join('&') : '')).then(function (d) {
+      /* The server tells us which roles this person may hand out. */
+      userFilters.grantable = d.grantable_roles || [];
+      const newBtn = document.getElementById('us-new');
+      if (newBtn) newBtn.disabled = userFilters.grantable.length === 0;
+      const hint = document.getElementById('us-hint');
+      if (hint) {
+        hint.textContent = userFilters.grantable.length
+          ? ('You can create: ' + userFilters.grantable.map(function (r) {
+              return ROLE_LABEL[r] || r;
+            }).join(', ') + '.')
+          : 'You cannot create accounts. You can still issue password reset tokens.';
+      }
+
       if (!d.users.length) {
         host.innerHTML = App.emptyState('No accounts match', 'Adjust the filters above.');
         return;
       }
       host.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
-        '<th>Name</th><th>Portal address</th><th>Role</th><th>Status</th><th>Last sign-in</th><th></th>' +
+        '<th>Name</th><th>Portal address</th><th>Role</th><th>Scope</th><th>Status</th><th>Last sign-in</th><th></th>' +
         '</tr></thead><tbody>' +
         d.users.map(function (u) {
+          /* Only offer Edit where the grant rules allow it: never on yourself,
+           * never on the owner, never on a peer admin unless you are the owner. */
+          const canEdit = u.role !== 'OWNER' && u.id !== App.state.user.id &&
+            (role === 'OWNER' || (u.role !== 'ADMIN' && userFilters.grantable.indexOf(u.role) !== -1));
+          const scope = u.role === 'LGA_OFFICER' ? ('LGA #' + (u.lga_id || '—'))
+            : (u.role === 'SCHOOL_ADMIN' ? ('School #' + (u.school_id || '—')) : '—');
           return '<tr>' +
             '<td><strong>' + App.esc(u.full_name) + '</strong><br><small>' + App.esc(u.email) + '</small></td>' +
             '<td class="nowrap">' + App.esc(u.mail_address || '—') +
               (u.phone ? '<br><small>' + App.esc(u.phone) + '</small>' : '') + '</td>' +
-            '<td><span class="badge ' + (u.role === 'OWNER' ? 'ok' : (u.role === 'ADMIN' ? 'info' : 'muted')) + '">' +
-              App.esc(u.role) + '</span></td>' +
+            '<td><span class="badge ' + (ROLE_BADGE[u.role] || 'muted') + '">' +
+              App.esc(ROLE_LABEL[u.role] || u.role) + '</span></td>' +
+            '<td class="nowrap">' + App.esc(scope) + '</td>' +
             '<td><span class="badge ' + (u.status === 'ACTIVE' ? 'ok' : 'danger') + '">' +
               App.esc(u.status) + '</span></td>' +
             '<td class="nowrap">' + App.esc(u.last_login_at ? App.fmtDate(u.last_login_at, true) : 'Never') + '</td>' +
             '<td class="actions">' +
-              (role === 'OWNER' && u.role !== 'OWNER' && u.id !== App.state.user.id
-                ? '<button class="btn btn-sm btn-outline" data-us-role="' + u.id + '">Role</button> ' : '') +
+              (canEdit
+                ? '<button class="btn btn-sm btn-outline" data-us-role="' + u.id + '">Edit</button> ' : '') +
               '<button class="btn btn-sm btn-ghost" data-us-tok="' + u.id + '">Reset password</button>' +
             '</td>' +
           '</tr>';
@@ -1388,47 +1420,165 @@
       });
     }).catch(failed);
   }
-  /* --- role / status editor (OWNER only) ----------------------------------- */
-  function roleEditor(user) {
-    const box = App.openModal(
-      '<h3>Account settings</h3>' +
-      '<p><strong>' + App.esc(user.full_name) + '</strong><br>' +
-        '<span class="kv-note">' + App.esc(user.mail_address || user.email) + '</span></p>' +
-      '<div class="form-grid">' +
-        '<div class="field"><label for="ur-role">Role</label><select id="ur-role">' +
-          ['ADMIN', 'EDITOR', 'STAFF'].map(function (r) {
-            return '<option value="' + r + '"' + (user.role === r ? ' selected' : '') + '>' + r + '</option>';
-          }).join('') +
-        '</select></div>' +
-        '<div class="field"><label for="ur-status">Status</label><select id="ur-status">' +
-          '<option value="ACTIVE"' + (user.status !== 'SUSPENDED' ? ' selected' : '') + '>Active</option>' +
-          '<option value="SUSPENDED"' + (user.status === 'SUSPENDED' ? ' selected' : '') + '>Suspended</option>' +
-        '</select></div>' +
-      '</div>' +
-      '<p class="kv-note">Suspending an account blocks sign-in immediately; the record itself is kept.</p>' +
-      '<p class="form-error" id="ur-err" hidden></p>' +
-      '<div class="modal-actions">' +
-        '<button class="btn btn-ghost" type="button" id="ur-cancel">Cancel</button>' +
-        '<button class="btn" type="button" id="ur-save">Save</button>' +
-      '</div>');
+  /* Load the LGA and school pickers used by the scoped roles. */
+  function scopePickers() {
+    return Promise.all([
+      App.api('/api/schools/lgas').catch(function () { return { lgas: [] }; }),
+      App.api('/api/schools?limit=100').catch(function () { return { schools: [] }; })
+    ]);
+  }
 
-    App.on(box.querySelector('#ur-cancel'), 'click', App.closeModal);
-    App.on(box.querySelector('#ur-save'), 'click', function () {
-      const err = box.querySelector('#ur-err');
-      err.hidden = true;
-      App.busy(this, function () {
-        return App.api('/api/staff/users/' + user.id, {
-          method: 'PUT',
-          body: {
-            role: box.querySelector('#ur-role').value,
-            status: box.querySelector('#ur-status').value
-          }
-        });
-      }).then(function () {
-        App.closeModal();
-        App.toast('Account updated.', 'ok');
-        renderUserRows();
-      }).catch(function (e) { err.hidden = false; err.textContent = e.message; });
+  function scopeFieldsHTML(prefix, opts) {
+    const o = opts || {};
+    const lgaSel = '<div class="field uf-lga"><label for="' + prefix + '-lga">LGA</label>' +
+      '<select id="' + prefix + '-lga"><option value="">Select…</option>' +
+      (o.lgas || []).map(function (l) {
+        return '<option value="' + l.id + '"' +
+          ((o.lga_id && Number(o.lga_id) === l.id) ? ' selected' : '') + '>' +
+          App.esc(l.name) + '</option>';
+      }).join('') + '</select></div>';
+    const schSel = '<div class="field uf-school"><label for="' + prefix + '-school">School</label>' +
+      '<select id="' + prefix + '-school"><option value="">Select…</option>' +
+      (o.schools || []).map(function (s) {
+        return '<option value="' + s.id + '"' +
+          ((o.school_id && Number(o.school_id) === s.id) ? ' selected' : '') + '>' +
+          App.esc(s.name) + ' (' + App.esc(s.lga) + ')</option>';
+      }).join('') + '</select></div>';
+    return lgaSel + schSel;
+  }
+
+  /** Show only the LGA or school picker the chosen role needs. */
+  function syncScopeFields(prefix) {
+    const roleSel = document.getElementById(prefix + '-role');
+    const lgaBox = document.querySelector('.uf-lga');
+    const schBox = document.querySelector('.uf-school');
+    const r = roleSel ? roleSel.value : '';
+    if (lgaBox) lgaBox.style.display = r === 'LGA_OFFICER' ? '' : 'none';
+    if (schBox) schBox.style.display = r === 'SCHOOL_ADMIN' ? '' : 'none';
+  }
+
+  /* --- create an account ---------------------------------------------------- */
+  function createAccountForm() {
+    const roles = userFilters.grantable;
+    if (!roles.length) { App.toast('You cannot create accounts.', 'err'); return; }
+
+    scopePickers().then(function (both) {
+      const box = App.openModal(
+        '<h3>Add account</h3>' +
+        '<form id="ua-form" class="form"><div class="form-grid">' +
+          '<div class="field"><label for="ua-name">Full name</label>' +
+            '<input id="ua-name" required></div>' +
+          '<div class="field"><label for="ua-email">Email</label>' +
+            '<input id="ua-email" type="email" required></div>' +
+          '<div class="field"><label for="ua-phone">Phone (optional)</label>' +
+            '<input id="ua-phone"></div>' +
+          /* Only the roles this administrator may actually hand out. */
+          '<div class="field"><label for="ua-role">Role</label><select id="ua-role">' +
+            roles.map(function (r) {
+              return '<option value="' + r + '">' + App.esc(ROLE_LABEL[r] || r) + '</option>';
+            }).join('') +
+          '</select></div>' +
+          scopeFieldsHTML('ua', { lgas: both[0].lgas, schools: both[1].schools }) +
+        '</div>' +
+        '<p class="kv-note">A one-time password reset token can be issued for this account ' +
+          'straight from the list.</p>' +
+        '<p class="form-error" id="ua-err" hidden></p>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-ghost" type="button" id="ua-cancel">Cancel</button>' +
+          '<button class="btn" type="submit">Create account</button>' +
+        '</div></form>');
+
+      App.on(box.querySelector('#ua-cancel'), 'click', App.closeModal);
+      App.on(box.querySelector('#ua-role'), 'change', function () { syncScopeFields('ua'); });
+      syncScopeFields('ua');
+
+      const form = box.querySelector('#ua-form');
+      App.on(form, 'submit', function (ev) {
+        ev.preventDefault();
+        const err = box.querySelector('#ua-err');
+        const lga = box.querySelector('#ua-lga').value;
+        const school = box.querySelector('#ua-school').value;
+        App.busy(this, function () {
+          return App.api('/api/staff/users', {
+            method: 'POST',
+            body: {
+              full_name: box.querySelector('#ua-name').value.trim(),
+              email: box.querySelector('#ua-email').value.trim(),
+              phone: box.querySelector('#ua-phone').value.trim(),
+              role: box.querySelector('#ua-role').value,
+              lga_id: lga || null,
+              school_id: school || null
+            }
+          });
+        }).then(function (res) {
+          App.closeModal();
+          App.toast('Account created' + (res.mail_address ? ' — portal address ' + res.mail_address : '') + '.', 'ok');
+          renderUserRows();
+        }).catch(function (e) { err.hidden = false; err.textContent = e.message; });
+      });
+    });
+  }
+
+  /* --- role / status editor (grant rules applied) ---------------------------- */
+  function roleEditor(user) {
+    /* Never offer a role this administrator may not hand out, and never offer
+     * OWNER (that moves only through the transfer flow). */
+    const allowed = userFilters.grantable.slice();
+    if (user.role !== 'OWNER' && allowed.indexOf(user.role) === -1) allowed.unshift(user.role);
+
+    scopePickers().then(function (both) {
+      const box = App.openModal(
+        '<h3>Account settings</h3>' +
+        '<p><strong>' + App.esc(user.full_name) + '</strong><br>' +
+          '<span class="kv-note">' + App.esc(user.mail_address || user.email) + '</span></p>' +
+        '<div class="form-grid">' +
+          '<div class="field"><label for="ur-role">Role</label><select id="ur-role">' +
+            allowed.map(function (r) {
+              return '<option value="' + r + '"' + (user.role === r ? ' selected' : '') + '>' +
+                App.esc(ROLE_LABEL[r] || r) + '</option>';
+            }).join('') +
+          '</select></div>' +
+          '<div class="field"><label for="ur-status">Status</label><select id="ur-status">' +
+            '<option value="ACTIVE"' + (user.status !== 'SUSPENDED' ? ' selected' : '') + '>Active</option>' +
+            '<option value="SUSPENDED"' + (user.status === 'SUSPENDED' ? ' selected' : '') + '>Suspended</option>' +
+          '</select></div>' +
+          scopeFieldsHTML('ur', {
+            lgas: both[0].lgas, schools: both[1].schools,
+            lga_id: user.lga_id, school_id: user.school_id
+          }) +
+        '</div>' +
+        '<p class="kv-note">Suspending an account blocks sign-in immediately; the record itself is kept.</p>' +
+        '<p class="form-error" id="ur-err" hidden></p>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-ghost" type="button" id="ur-cancel">Cancel</button>' +
+          '<button class="btn" type="button" id="ur-save">Save</button>' +
+        '</div>');
+
+      App.on(box.querySelector('#ur-cancel'), 'click', App.closeModal);
+      App.on(box.querySelector('#ur-role'), 'change', function () { syncScopeFields('ur'); });
+      syncScopeFields('ur');
+
+      App.on(box.querySelector('#ur-save'), 'click', function () {
+        const err = box.querySelector('#ur-err');
+        err.hidden = true;
+        const lga = box.querySelector('#ur-lga').value;
+        const school = box.querySelector('#ur-school').value;
+        App.busy(this, function () {
+          return App.api('/api/staff/users/' + user.id, {
+            method: 'PUT',
+            body: {
+              role: box.querySelector('#ur-role').value,
+              status: box.querySelector('#ur-status').value,
+              lga_id: lga || null,
+              school_id: school || null
+            }
+          });
+        }).then(function () {
+          App.closeModal();
+          App.toast('Account updated.', 'ok');
+          renderUserRows();
+        }).catch(function (e) { err.hidden = false; err.textContent = e.message; });
+      });
     });
   }
   /* --------------------------------------------------------------------- *

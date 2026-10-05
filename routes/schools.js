@@ -94,8 +94,10 @@ router.get('/options', function (req, res) {
 
 /* Per-LGA summary with counts (home page quick stats + directory browse) */
 router.get('/lgas', function (req, res) {
+  /* `id` is included so administrative pickers (LGA-scoped roles) can post it
+   * back; the summary fields are unchanged. */
   const rows = db.prepare(
-    `SELECT l.name, l.slug, COUNT(s.id) AS total
+    `SELECT l.id, l.name, l.slug, COUNT(s.id) AS total
      FROM lgas l LEFT JOIN schools s ON s.lga = l.name AND s.status = 'active'
      GROUP BY l.id ORDER BY l.sort_order`
   ).all();

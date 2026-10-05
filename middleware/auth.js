@@ -116,7 +116,7 @@ function requireRole() {
  * Guard for anything that touches the OWNER account.  Non-owners get a plain
  * 404 so a guessed id reveals nothing.
  */
-function requireNotOwnerTarget(req, res) {
+function requireNotOwnerTarget(req, res, next) {
   const id = parseInt(String(req.params.id || ''), 10);
   if (Number.isFinite(id)) {
     const target = db.prepare('SELECT role FROM users WHERE id = ?').get(id);
