@@ -9,7 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcrypt');
 const db = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, requireNotOwnerTarget, isOwner } = require('../middleware/auth');
 const { backupZip, relPath } = require('../middleware/upload');
 const { clean, toIntOrNull, handleErrors } = require('../middleware/validate');
 const { asyncHandler } = require('../middleware/errors');
@@ -52,7 +52,8 @@ router.get('/dashboard', function (req, res) {
       unread_tickets: openTickets,
       waiting_chats: one("SELECT COUNT(*) AS n FROM chat_sessions WHERE status = 'waiting'").n,
       live_chats: one("SELECT COUNT(*) AS n FROM chat_sessions WHERE status = 'live'").n,
-      users: one("SELECT COUNT(*) AS n FROM users WHERE status = 'ACTIVE'").n,
+      users: one("SELECT COUNT(*) AS n FROM users WHERE status = 'ACTIVE'" +
+        (isOwner(req.user) ? '' : " AND role <> 'OWNER'")).n,
       last_sms: lastSms
         ? { at: lastSms.created_at, to: lastSms.recipients_count, status: lastSms.status,
             dry_run: Boolean(lastSms.dry_run), by: lastSms.sent_by_name }
@@ -65,7 +66,10 @@ router.get('/dashboard', function (req, res) {
     schools_by_category: db.prepare(
       "SELECT category, COUNT(*) AS n FROM schools WHERE status = 'active' GROUP BY category"
     ).all(),
-    by_role: db.prepare('SELECT role, COUNT(*) AS n FROM users GROUP BY role').all(),
+    by_role: db.prepare(
+      'SELECT role, COUNT(*) AS n FROM users' + (isOwner(req.user) ? '' : " WHERE role <> 'OWNER'") +
+      ' GROUP BY role'
+    ).all(),
     recent_audit: db.prepare(
       'SELECT id, user_name, role, action, entity, entity_id, details, created_at FROM audit_log ORDER BY id DESC LIMIT 12'
     ).all(),

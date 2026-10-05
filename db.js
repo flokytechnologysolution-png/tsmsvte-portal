@@ -64,7 +64,7 @@ const LGAS = [
 const SCHOOL_TYPES = ['junior_secondary', 'senior_secondary', 'technical', 'vocational'];
 const SCHOOL_CATEGORIES = ['boys', 'girls', 'mixed'];
 const BOARDING_TYPES = ['boarding', 'day', 'both'];
-const ROLES = ['OWNER', 'ADMIN', 'EDITOR', 'STAFF'];
+const ROLES = ['OWNER', 'ADMIN', 'LGA_OFFICER', 'SCHOOL_ADMIN', 'EDITOR', 'STAFF'];
 
 function slugify(text) {
   return String(text || '')
@@ -460,6 +460,22 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 );
 CREATE INDEX IF NOT EXISTS idx_login_attempts_locked ON login_attempts (locked_until);
 `);
+
+/* ------------------------------------------------------------------ *
+ * Scoped accounts (safe, additive).
+ *
+ * LGA_OFFICER and SCHOOL_ADMIN are limited to one LGA or one school.  The two
+ * nullable columns are added rather than a new table so every existing
+ * account (owner, admin, editor, staff) keeps working untouched.
+ * ------------------------------------------------------------------ */
+(function addUserScopeColumns() {
+  ['lga_id', 'school_id'].forEach(function (col) {
+    const has = db.pragma('table_info(users)').some(function (c) { return c.name === col; });
+    if (!has) db.exec('ALTER TABLE users ADD COLUMN ' + col + ' INTEGER');
+  });
+  db.exec('CREATE INDEX IF NOT EXISTS idx_users_lga ON users (lga_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_users_school ON users (school_id)');
+})();
 
 /* ------------------------------------------------------------------ *
  * Per-recipient SMS log (safe, additive migration).

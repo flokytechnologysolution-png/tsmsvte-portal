@@ -31,7 +31,7 @@ if (!SECRET || SECRET.length < 32) {
 const EXPIRES = process.env.JWT_EXPIRES || '7d';
 const SECURE = String(process.env.COOKIE_SECURE || '0') === '1';
 
-const ROLE_RANK = { OWNER: 4, ADMIN: 3, EDITOR: 2, STAFF: 1 };
+const ROLE_RANK = require('../lib/roles').RANK;
 
 function signToken(user) {
   return jwt.sign(
@@ -103,12 +103,28 @@ function requireRole() {
   return function (req, res, next) {
     if (!req.user) return res.status(401).json({ error: 'Authentication required' });
     if (roles.indexOf(req.user.role) !== -1) return next();
-    /* OWNER implicitly satisfies ADMIN and EDITOR checks */
+    /* OWNER implicitly satisfies ADMIN and EDITOR checks.  LGA_OFFICER and
+     * SCHOOL_ADMIN deliberately do NOT — they are scoped, not statewide. */
     if (req.user.role === 'OWNER' && (roles.indexOf('ADMIN') !== -1 || roles.indexOf('EDITOR') !== -1)) {
       return next();
     }
     return res.status(403).json({ error: 'You do not have permission to do that' });
   };
+}
+
+/**
+ * Guard for anything that touches the OWNER account.  Non-owners get a plain
+ * 404 so a guessed id reveals nothing.
+ */
+function requireNotOwnerTarget(req, res) {
+  const id = parseInt(String(req.params.id || ''), 10);
+  if (Number.isFinite(id)) {
+    const target = db.prepare('SELECT role FROM users WHERE id = ?').get(id);
+    if (target && target.role === 'OWNER' && req.user.role !== 'OWNER') {
+      return res.status(404).json({ error: 'Not found' });
+    }
+  }
+  return next();
 }
 
 function requireExactRole() {
@@ -135,7 +151,9 @@ module.exports = {
   attachUser: attachUser,
   requireAuth: requireAuth,
   requireRole: requireRole,
+  requireNotOwnerTarget: requireNotOwnerTarget,
   requireExactRole: requireExactRole,
   isAdminish: isAdminish,
+  isOwner: require('../lib/roles').isOwner,
   publicUser: publicUser
 };

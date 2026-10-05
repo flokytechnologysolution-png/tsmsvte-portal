@@ -11,7 +11,8 @@ const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const db = require('../db');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const roles = require('../lib/roles');
+const { requireAuth, requireRole, requireNotOwnerTarget } = require('../middleware/auth');
 const { images, relPath } = require('../middleware/upload');
 const { clean, toIntOrNull, handleErrors } = require('../middleware/validate');
 const { asyncHandler } = require('../middleware/errors');
@@ -287,39 +288,123 @@ router.get('/users/list', requireRole('ADMIN'), function (req, res) {
   const q = clean(req.query.q || '').slice(0, 80);
   const where = [];
   const params = [];
-  if (db.ROLES.indexOf(role) !== -1) { where.push('role = ?'); params.push(role); }
+  if (role) { where.push('role = ?'); params.push(role); }
   if (q) { where.push('(full_name LIKE ? OR email LIKE ? OR mail_address LIKE ?)'); params.push('%' + q + '%', '%' + q + '%', '%' + q + '%'); }
-  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  /* The OWNER is invisible to everyone else: hidden from the list, the
+   * search and the role filter unless the viewer is the owner. */
+  const ownerClause = roles.hideOwnerFromSql(req.user);
+  if (ownerClause) where.push(ownerClause);
+  const whereSql = where.length ? ' WHERE ' + where.filter(Boolean).join(' AND ') : '';
   const rows = db.prepare(
-    'SELECT id, email, full_name, role, status, phone, mail_address, last_login_at, created_at FROM users' +
-    whereSql + ' ORDER BY CASE role WHEN \'OWNER\' THEN 0 WHEN \'ADMIN\' THEN 1 WHEN \'EDITOR\' THEN 2 ELSE 3 END, full_name COLLATE NOCASE'
+    'SELECT id, email, full_name, role, status, phone, mail_address, lga_id, school_id, last_login_at, created_at FROM users' +
+    whereSql + " ORDER BY CASE role WHEN 'OWNER' THEN 0 WHEN 'ADMIN' THEN 1 WHEN 'LGA_OFFICER' THEN 2 " +
+    "WHEN 'SCHOOL_ADMIN' THEN 3 WHEN 'EDITOR' THEN 4 ELSE 5 END, full_name COLLATE NOCASE"
   ).all(...params);
-  res.json({ users: rows, roles: db.ROLES });
+  res.json({
+    users: rows,
+    roles: roles.ROLES,
+    /* The editor only offers the roles this person may actually hand out. */
+    grantable_roles: roles.grantableRoles(req.user)
+  });
 });
 
-router.put('/users/:id([0-9]+)', requireRole('OWNER'), writeLimiter, function (req, res) {
+/* --- create a portal account ---------------------------------------------
+ * Only OWNER can create ADMINs.  ADMIN can create LGA_OFFICER,
+ * SCHOOL_ADMIN, EDITOR and STAFF.  An LGA_OFFICER can create SCHOOL_ADMINs,
+ * and only inside their own LGA.
+ */
+router.post('/users', requireRole('ADMIN'), writeLimiter, function (req, res) {
+  const email = clean(req.body.email).toLowerCase().slice(0, 160);
+  const fullName = clean(req.body.full_name).slice(0, 120);
+  const phone = clean(req.body.phone).slice(0, 40);
+  const lgaId = toIntOrNull(req.body.lga_id);
+  const schoolId = toIntOrNull(req.body.school_id);
+
+  if (!email || email.indexOf('@') === -1) {
+    return res.status(422).json({ error: 'Enter a valid email address.' });
+  }
+  if (fullName.length < 2) return res.status(422).json({ error: "Enter the person's full name." });
+
+  const check = roles.validateRoleAssignment(req.body.role, lgaId, schoolId);
+  if (check.errors.length) {
+    return res.status(422).json({ error: check.errors[0], errors: check.errors });
+  }
+  if (!roles.canGrant(req.user, check.value.role)) {
+    return res.status(403).json({ error: 'You are not allowed to create a ' + check.value.role + ' account.' });
+  }
+
+  /* An LGA Officer may only appoint inside their own LGA. */
+  if (req.user.role === 'LGA_OFFICER') {
+    const school = schoolId ? db.prepare('SELECT id, lga FROM schools WHERE id = ?').get(schoolId) : null;
+    if (!school) return res.status(422).json({ error: 'Choose a school.' });
+    const myLga = req.user.lga_id ? db.prepare('SELECT name FROM lgas WHERE id = ?').get(req.user.lga_id) : null;
+    if (!myLga || myLga.name !== school.lga) {
+      return res.status(403).json({ error: 'You can only appoint inside your own LGA.' });
+    }
+  }
+
+  if (db.prepare('SELECT id FROM users WHERE email = ?').get(email)) {
+    return res.status(409).json({ error: 'An account with that email already exists.' });
+  }
+
+  /* A placeholder password forces a reset on first sign-in; the owner can
+   * issue a one-time token from the user list. */
+  const placeholder = bcrypt.hashSync(crypto.randomBytes(24).toString('hex'), 10);
+  const mail = db.makeMailAddress(fullName, db.getSetting('mail_domain'));
+  const info = db.prepare(
+    `INSERT INTO users (email, password_hash, full_name, role, status, phone, mail_address, lga_id, school_id)
+     VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?)`
+  ).run(email, placeholder, fullName, check.value.role, phone, mail, check.value.lga_id, check.value.school_id);
+
+  db.logAudit(req.user, 'user.create', 'user', info.lastInsertRowid, {
+    role: check.value.role, lga_id: check.value.lga_id, school_id: check.value.school_id
+  }, req);
+  return res.status(201).json({ ok: true, id: info.lastInsertRowid, mail_address: mail });
+});
+
+router.put('/users/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, requireNotOwnerTarget, function (req, res) {
   const id = toIntOrNull(req.params.id);
   const user = id ? db.prepare('SELECT * FROM users WHERE id = ?').get(id) : null;
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (user.id === req.user.id) return res.status(409).json({ error: 'You cannot change your own role or status here.' });
-  if (user.role === 'OWNER') return res.status(409).json({ error: 'The owner account can only be changed with the transfer-ownership flow.' });
+  /* requireNotOwnerTarget already answered 404 for the owner; this is belt
+   * and braces in case the route is ever reused without the guard. */
+  if (user.role === 'OWNER') return res.status(404).json({ error: 'Not found' });
+  /* Only the OWNER may touch another ADMIN — an admin must not be able to
+   * demote, suspend or disable a peer. */
+  if (user.role === 'ADMIN' && req.user.role !== 'OWNER') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  /* And nobody may promote somebody to a role they cannot hand out. */
+  const wanted = clean(req.body.role || '').toUpperCase();
+  if (wanted && !roles.canGrant(req.user, wanted)) {
+    return res.status(403).json({ error: 'You are not allowed to assign the ' + wanted + ' role.' });
+  }
 
-  const role = clean(req.body.role || user.role).toUpperCase();
-  if (['ADMIN', 'EDITOR', 'STAFF'].indexOf(role) === -1) return res.status(422).json({ error: 'Role must be ADMIN, EDITOR or STAFF.' });
+  const check = roles.validateRoleAssignment(wanted || user.role,
+    toIntOrNull(req.body.lga_id) || user.lga_id,
+    toIntOrNull(req.body.school_id) || user.school_id);
+  if (check.errors.length) return res.status(422).json({ error: check.errors[0], errors: check.errors });
+
   const status = req.body.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
 
-  db.prepare("UPDATE users SET role = ?, status = ?, updated_at = datetime('now') WHERE id = ?")
-    .run(role, status, id);
-  db.logAudit(req.user, 'user.update', 'user', id, { role: role, status: status }, req);
+  db.prepare(
+    "UPDATE users SET role = ?, status = ?, lga_id = ?, school_id = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(check.value.role, status, check.value.lga_id, check.value.school_id, id);
+  db.logAudit(req.user, 'user.update', 'user', id, {
+    role: check.value.role, status: status, lga_id: check.value.lga_id, school_id: check.value.school_id
+  }, req);
   return res.json({ ok: true });
 });
 
-router.post('/users/:id([0-9]+)/reset-token', requireRole('ADMIN'), writeLimiter, function (req, res) {
+router.post('/users/:id([0-9]+)/reset-token', requireRole('ADMIN'), writeLimiter, requireNotOwnerTarget, function (req, res) {
   const id = toIntOrNull(req.params.id);
   const user = id ? db.prepare('SELECT * FROM users WHERE id = ?').get(id) : null;
   if (!user) return res.status(404).json({ error: 'User not found' });
-  if (user.role === 'OWNER' && req.user.role !== 'OWNER') {
-    return res.status(403).json({ error: 'Only the owner can reset the owner password.' });
+  /* The OWNER is 404 for everyone else (see requireNotOwnerTarget).  An
+   * ADMIN's password may only be reset by the OWNER. */
+  if (user.role === 'ADMIN' && req.user.role !== 'OWNER') {
+    return res.status(403).json({ error: 'Only the owner can reset an administrator password.' });
   }
   const tok = db.createToken({
     userId: user.id, email: user.email, purpose: 'password_reset',

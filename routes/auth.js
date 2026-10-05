@@ -182,8 +182,7 @@ router.post('/login', loginLimiter, asyncHandler(async function (req, res) {
 }), handleErrors);
 
 function homeFor(role) {
-  if (role === 'OWNER' || role === 'ADMIN' || role === 'EDITOR') return '/admin.html';
-  return '/dashboard.html';
+  return require('../lib/roles').homeFor(role);
 }
 
 router.post('/logout', function (req, res) {

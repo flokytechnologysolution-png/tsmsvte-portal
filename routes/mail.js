@@ -13,7 +13,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const db = require('../db');
-const { requireAuth, isAdminish } = require('../middleware/auth');
+const { requireAuth, isAdminish, isOwner } = require('../middleware/auth');
 const { mailAttachments, relPath } = require('../middleware/upload');
 const { clean, toIntOrNull, handleErrors } = require('../middleware/validate');
 const { asyncHandler } = require('../middleware/errors');
@@ -94,11 +94,13 @@ router.get('/recipients', function (req, res) {
     return res.json({ lgas: db.prepare('SELECT name FROM lgas ORDER BY sort_order').all().map(function (r) { return r.name; }) });
   }
   if (type === 'roles') {
-    return res.json({ roles: ['ADMIN', 'EDITOR', 'STAFF'] });
+    return res.json({ roles: require('../lib/roles').ROLES });
   }
 
   const where = ["u.status = 'ACTIVE'", 'u.id != ?'];
   const params = [req.user.id];
+  /* The OWNER is not in the address book unless the reader is the owner. */
+  if (!isOwner(req.user)) where.push("u.role <> 'OWNER'");
   if (q) {
     where.push('(u.full_name LIKE ? OR u.email LIKE ? OR u.mail_address LIKE ?)');
     params.push('%' + q + '%', '%' + q + '%', '%' + q + '%');
