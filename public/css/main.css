@@ -311,6 +311,38 @@ table.data td.actions { white-space: nowrap; }
 .banner-card.tinted { background: var(--primary-tint); border-color: #cfe7db; }
 .banner-card.accented { background: var(--warn-tint); border-color: #f0dfae; }
 
+/* ------------------------------- events -------------------------------- */
+.event-card {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.event-card .cover { aspect-ratio: 16 / 9; background: var(--primary-tint); }
+.event-card .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.event-body { padding: 18px 20px 20px; }
+.event-when {
+  font-size: 12.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--primary);
+  margin: 0 0 6px;
+}
+.event-title { font-size: 1.15rem; margin: 0 0 6px; }
+.event-where { font-size: 14px; margin: 0 0 8px; }
+.event-desc { margin: 0; color: var(--ink); }
+.event-card.compact .event-body { padding: 14px 16px 16px; }
+.event-card.compact .event-title { font-size: 1.02rem; }
+
+/* The public list is a single column of full-width cards. */
+#events-list { display: grid; gap: 18px; }
+#past-list { display: grid; gap: 18px; margin-top: 20px; }
+#past-list:empty { display: none; }
+
+@media (max-width: 640px) {
+  .event-card .cover { aspect-ratio: 16 / 10; }
+}
+
 /* --------------------------- ministry photographs ----------------------
  * Every image sits in a fixed-ratio box with object-fit: cover, so the
  * layout never jumps and a photo is never stretched.  The wrapper keeps the

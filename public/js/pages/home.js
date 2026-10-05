@@ -130,6 +130,32 @@
     });
   }
 
+  function loadEvents() {
+    App.api('/api/events').then(function (data) {
+      const host = document.getElementById('home-events');
+      if (!host) return;
+      const list = (data.events || []).slice(0, 3);
+      if (!list.length) {
+        host.innerHTML = App.emptyState('No events coming up',
+          'Meetings and workshops announced by the ministry will appear here.');
+        return;
+      }
+      host.innerHTML = list.map(function (e) {
+        const when = App.fmtDate(e.event_date);
+        return '<article class="card event-card compact">' +
+          '<div class="event-body">' +
+            '<p class="event-when">' + App.esc(when) + '</p>' +
+            '<h3 class="event-title">' + App.esc(e.title) + '</h3>' +
+            (e.location ? '<p class="muted event-where">Where: ' + App.esc(e.location) + '</p>' : '') +
+          '</div>' +
+        '</article>';
+      }).join('');
+    }).catch(function () {
+      const host = document.getElementById('home-events');
+      if (host) host.innerHTML = App.emptyState('Could not load events', 'Please refresh the page.');
+    });
+  }
+
   function loadCirculars() {
     App.api('/api/circulars').then(function (data) {
       const host = document.getElementById('home-circulars');
@@ -186,6 +212,7 @@
   App.ready(function (ctx) {
     renderSettings(ctx.settings);
     loadNews();
+    loadEvents();
     loadCirculars();
     loadLgas();
     loadFaq();

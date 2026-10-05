@@ -17,6 +17,7 @@
     { id: 'staff', label: 'Staff registrations', roles: ['OWNER', 'ADMIN'], pill: 'staffPending' },
     { id: 'schools', label: 'Schools', roles: ['OWNER', 'ADMIN'] },
     { id: 'news', label: 'News', roles: ['OWNER', 'ADMIN', 'EDITOR'] },
+    { id: 'events', label: 'Events', roles: ['OWNER', 'ADMIN', 'EDITOR'] },
     { id: 'circulars', label: 'Circulars', roles: ['OWNER', 'ADMIN'] },
     { id: 'faq', label: 'FAQ & knowledge base', roles: ['OWNER', 'ADMIN', 'EDITOR'] },
     { id: 'users', label: 'User accounts', roles: ['OWNER', 'ADMIN'] },
@@ -625,6 +626,98 @@
     });
   }
   /* --------------------------------------------------------------------- *
+   * Events (EDITOR and above)                                              *
+   * --------------------------------------------------------------------- */
+  const eventFilters = { q: '', status: '' };
+
+  function loadEvents() {
+    section('events', 'Events',
+      '<div class="filter-bar">' +
+        '<div class="field grow"><label for="ev-q">Search</label>' +
+          '<input type="search" id="ev-q" placeholder="Title, place or description…" value="' +
+          App.esc(eventFilters.q) + '"></div>' +
+        '<div class="field"><label for="ev-status">Status</label><select id="ev-status">' +
+          '<option value="">All</option><option value="draft">Drafts</option>' +
+          '<option value="published">Published</option></select></div>' +
+        '<button class="btn" type="button" id="ev-new">+ Add event</button>' +
+      '</div>' +
+      '<div class="table-wrap"><table class="data"><thead><tr>' +
+        '<th>Event</th><th>Date</th><th>Location</th><th>Status</th><th class="right">Actions</th>' +
+      '</tr></thead><tbody id="ev-rows"><tr><td colspan="5">' +
+        '<div class="empty-state"><strong>Loading…</strong></div></td></tr></tbody></table></div>');
+
+    App.on(document.getElementById('ev-new'), 'click', function () { eventEditor(null); });
+    App.on(document.getElementById('ev-q'), 'input', App.debounce(function () {
+      eventFilters.q = document.getElementById('ev-q').value.trim();
+      renderEventRows();
+    }, 300));
+    App.on(document.getElementById('ev-status'), 'change', function () {
+      eventFilters.status = this.value;
+      renderEventRows();
+    });
+    renderEventRows();
+  }
+
+  function renderEventRows() {
+    const host = document.getElementById('ev-rows');
+    if (!host) return;
+    const parts = ['all=1'];
+    if (eventFilters.q) parts.push('q=' + encodeURIComponent(eventFilters.q));
+
+    App.api('/api/events?' + parts.join('&')).then(function (d) {
+      let rows = d.events || [];
+      if (eventFilters.status) rows = rows.filter(function (e) { return e.status === eventFilters.status; });
+
+      if (!rows.length) {
+        host.innerHTML = '<tr><td colspan="5">' +
+          App.emptyState('No events yet', 'Add the ministry\'s first meeting or workshop.') + '</td></tr>';
+        return;
+      }
+
+      host.innerHTML = rows.map(function (e) {
+        const id = Number(e.id);
+        return '<tr>' +
+          '<td><strong>' + App.esc(e.title) + '</strong>' +
+            (e.description ? '<br><small class="muted">' + App.esc(e.description.slice(0, 120)) + '</small>' : '') +
+          '</td>' +
+          '<td class="nowrap">' + App.esc(e.event_date || '—') + '</td>' +
+          '<td>' + App.esc(e.location || '—') + '</td>' +
+          '<td><span class="badge ' + (e.status === 'published' ? 'ok' : 'warn') + '">' +
+            App.esc(e.status) + '</span></td>' +
+          '<td class="actions">' +
+            '<button class="btn btn-sm" type="button" data-ev-edit="' + id + '">Edit</button>' +
+            '<button class="btn btn-sm btn-danger" type="button" data-ev-del="' + id + '">Delete</button>' +
+          '</td>' +
+        '</tr>';
+      }).join('');
+
+      host.querySelectorAll('[data-ev-edit]').forEach(function (b) {
+        App.on(b, 'click', function () {
+          const id = Number(b.getAttribute('data-ev-edit'));
+          eventEditor(rows.find(function (x) { return Number(x.id) === id; }) || null);
+        });
+      });
+      host.querySelectorAll('[data-ev-del]').forEach(function (b) {
+        App.on(b, 'click', function () {
+          const id = Number(b.getAttribute('data-ev-del'));
+          const ev = rows.find(function (x) { return Number(x.id) === id; });
+          confirmDialog('Delete event',
+            'Delete "' + (ev ? ev.title : 'this event') + '"? This cannot be undone.', 'Delete')
+            .then(function (ok) {
+              if (!ok) return;
+              App.busy(b, function () { return App.api('/api/events/' + id, { method: 'DELETE' }); })
+                .then(function () { App.toast('Event deleted.', 'ok'); renderEventRows(); })
+                .catch(function (e) { App.toast(e.message, 'err'); });
+            });
+        });
+      });
+    }).catch(function (err) {
+      host.innerHTML = '<tr><td colspan="5">' +
+        App.emptyState('Could not load events', err.message) + '</td></tr>';
+    });
+  }
+
+  /* --------------------------------------------------------------------- *
    * News (EDITOR and above)                                                *
    * --------------------------------------------------------------------- */
   const newsFilters = { status: '', q: '', page: 1 };
@@ -716,6 +809,62 @@
       });
     }).catch(failed);
   }
+  function eventEditor(rec) {
+    const isNew = !rec;
+    const e = rec || { title: '', description: '', event_date: '', location: '', image: '', status: 'draft' };
+
+    const box = App.openModal(
+      '<h3>' + (isNew ? 'Add event' : 'Edit event') + '</h3>' +
+      '<form id="ev-form" class="form">' +
+        '<div class="form-grid">' +
+          '<div class="field span-2"><label for="ev-title">Title</label>' +
+            '<input id="ev-title" value="' + App.esc(e.title) + '"></div>' +
+          '<div class="field"><label for="ev-date">Date</label>' +
+            '<input id="ev-date" type="date" value="' + App.esc(e.event_date) + '"></div>' +
+          '<div class="field"><label for="ev-loc">Location</label>' +
+            '<input id="ev-loc" value="' + App.esc(e.location) + '"></div>' +
+          '<div class="field span-2"><label for="ev-desc">Description</label>' +
+            '<textarea id="ev-desc" rows="4">' + App.esc(e.description) + '</textarea></div>' +
+          '<div class="field"><label for="ev-status-f">Status</label><select id="ev-status-f">' +
+            '<option value="draft"' + (e.status === 'draft' ? ' selected' : '') + '>Draft</option>' +
+            '<option value="published"' + (e.status === 'published' ? ' selected' : '') + '>Published</option>' +
+          '</select></div>' +
+          '<div class="field"><label for="ev-img">Image</label><input id="ev-img" type="file" accept="image/*">' +
+            (e.image ? '<p class="kv-note mt-0">Current: ' + App.esc(e.image) + '</p>' : '') + '</div>' +
+        '</div>' +
+        '<p class="form-error" id="ev-error" hidden></p>' +
+        '<div class="form-actions">' +
+          '<button class="btn" type="submit">' + (isNew ? 'Create event' : 'Save changes') + '</button>' +
+          '<button class="btn btn-ghost" type="button" id="ev-cancel">Cancel</button>' +
+        '</div>' +
+      '</form>');
+
+    const err = box.querySelector('#ev-error');
+    const form = box.querySelector('#ev-form');
+    const submit = form.querySelector('button[type="submit"]');
+
+    App.on(box.querySelector('#ev-cancel'), 'click', function () { App.closeModal(); });
+    App.on(form, 'submit', function (ev2) {
+      ev2.preventDefault();
+      const fd = new FormData();
+      fd.append('title', box.querySelector('#ev-title').value.trim());
+      fd.append('event_date', box.querySelector('#ev-date').value);
+      fd.append('location', box.querySelector('#ev-loc').value.trim());
+      fd.append('description', box.querySelector('#ev-desc').value);
+      fd.append('status', box.querySelector('#ev-status-f').value);
+      const picked = box.querySelector('#ev-img').files[0];
+      if (picked) fd.append('image', picked);
+
+      App.busy(submit, function () {
+        return App.apiForm(isNew ? '/api/events' : '/api/events/' + e.id, fd, isNew ? 'POST' : 'PUT');
+      }).then(function () {
+        App.closeModal();
+        App.toast(isNew ? 'Event created.' : 'Event saved.', 'ok');
+        renderEventRows();
+      }).catch(function (x) { err.hidden = false; err.textContent = x.message; });
+    });
+  }
+
   /* --- article editor ------------------------------------------------------ */
   function newsEditor(rec) {
     const isNew = !rec;
@@ -2210,6 +2359,7 @@
     staff: loadStaff,
     schools: loadSchools,
     news: loadNews,
+    events: loadEvents,
     circulars: loadCirculars,
     faq: loadFaq,
     users: loadUsers,

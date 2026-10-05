@@ -97,6 +97,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/schools', require('./routes/schools'));
 app.use('/api/news', require('./routes/news'));
+app.use('/api/events', require('./routes/events'));
 app.use('/api/faqs', require('./routes/faq'));
 app.use('/api/circulars', require('./routes/circulars'));
 app.use('/api/settings', require('./routes/settings'));

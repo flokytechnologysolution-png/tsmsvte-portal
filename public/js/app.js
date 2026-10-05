@@ -236,6 +236,7 @@
   const NAV_PUBLIC = [
     { href: '/', label: 'Home' },
     { href: '/news.html', label: 'News' },
+    { href: '/events.html', label: 'Events' },
     { href: '/schools.html', label: 'Schools' },
     { href: '/circulars.html', label: 'Circulars' },
     { href: '/faq.html', label: 'FAQ' }
@@ -391,6 +392,7 @@
             '<h4>Explore</h4>' +
             '<ul>' +
               '<li><a href="/news.html">News</a></li>' +
+              '<li><a href="/events.html">Events</a></li>' +
               '<li><a href="/schools.html">Schools directory</a></li>' +
               '<li><a href="/circulars.html">Circulars &amp; downloads</a></li>' +
               '<li><a href="/faq.html">Frequently asked questions</a></li>' +

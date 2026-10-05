@@ -238,6 +238,20 @@ CREATE TABLE IF NOT EXISTS news (
   updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  title       TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  event_date  TEXT NOT NULL DEFAULT '',
+  location    TEXT NOT NULL DEFAULT '',
+  image       TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL DEFAULT 'draft',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_events_date ON events (event_date);
+CREATE INDEX IF NOT EXISTS idx_events_status ON events (status);
+
 CREATE TABLE IF NOT EXISTS faqs (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   question   TEXT NOT NULL,
