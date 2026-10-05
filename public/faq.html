@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FAQ — Taraba State Ministry of Secondary, Vocational and Technical Education</title>
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body data-active="/faq.html">
+  <div id="site-header"></div>
+
+  <main class="container narrow">
+    <div class="page-head center">
+      <h1>Frequently asked questions</h1>
+      <p class="sub">Search the answers published by the ministry.</p>
+    </div>
+
+    <div class="filter-bar">
+      <div class="field grow">
+        <label for="q">Search questions</label>
+        <input type="search" id="q" placeholder="Type a keyword…">
+      </div>
+      <div class="field">
+        <label for="category">Category</label>
+        <select id="category"><option value="">All categories</option></select>
+      </div>
+      <button class="btn" type="button" id="search-btn">Search</button>
+    </div>
+
+    <div id="faq-list">
+      <div class="empty-state"><strong>Loading…</strong></div>
+    </div>
+
+    <div class="card mt-3">
+      <h3>Still need help?</h3>
+      <p class="mb-2">Open the chat at the bottom right of the screen. The assistant answers from the ministry knowledge base and can hand you over to a member of staff.</p>
+      <button class="btn" type="button" id="open-chat-btn">Open the chat</button>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="/js/app.js"></script>
+  <script src="/js/pages/faq.js"></script>
+  <script src="/js/chat.js"></script>
+</body>
+</html>

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Taraba State Ministry of Secondary, Vocational and Technical Education</title>
+  <meta name="description" content="Official portal of the Taraba State Ministry of Secondary, Vocational and Technical Education — news, schools directory, circulars and staff services.">
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body data-active="/">
+  <div id="site-header"></div>
+
+  <main>
+    <!-- hero: every word comes from Admin -> Site settings -->
+    <section class="hero" id="hero">
+      <div class="container">
+        <h1 id="hero-heading">Welcome to the Taraba State Ministry of Secondary, Vocational and Technical Education</h1>
+        <p class="sub" id="hero-sub"></p>
+        <div class="row">
+          <a class="btn btn-accent btn-lg" href="/schools.html">Browse schools</a>
+          <a class="btn btn-outline btn-lg" href="/register.html">Staff registration</a>
+          <button class="btn btn-outline btn-lg hidden" type="button" id="pwa-install-btn">Install app</button>
+        </div>
+        <p class="sub small muted hidden" id="pwa-install-hint">
+          On iPhone or iPad: tap the Share button, then choose &ldquo;Add to Home Screen&rdquo;.
+        </p>
+        <div class="hero-stats" id="hero-stats"></div>
+      </div>
+    </section>
+
+    <!-- programme banners -->
+    <section class="section">
+      <div class="container">
+        <div class="grid grid-2">
+          <div class="banner-card tinted">
+            <div class="banner-media">
+              <img id="banner1-img" alt="Pupils at a government secondary school" loading="lazy"
+                   width="640" height="360">
+            </div>
+            <span class="section-kicker">Programme</span>
+            <h2 id="banner1-title">The Governor's Free Education Programme</h2>
+            <p class="mb-0" id="banner1-text"></p>
+          </div>
+          <div class="banner-card accented">
+            <div class="banner-media">
+              <img id="banner2-img" alt="Pupils receiving school materials" loading="lazy"
+                   width="640" height="360">
+            </div>
+            <span class="section-kicker">Programme</span>
+            <h2 id="banner2-title">Support for the Girl-Child</h2>
+            <p class="mb-0" id="banner2-text"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- governor's vision: portrait beside the approved wording -->
+    <section class="section alt" id="vision">
+      <div class="container">
+        <div class="gov-layout">
+          <figure class="gov-portrait">
+            <img id="gov-photo" alt="Portrait photograph of the Executive Governor"
+                 loading="lazy" width="480" height="600">
+          </figure>
+          <div>
+            <span class="section-kicker">Leadership</span>
+            <h2 class="section-title" id="gov-name">Governor's vision for education</h2>
+            <p class="muted" id="gov-title"></p>
+            <div class="vision-block">
+              <h3>Free education</h3>
+              <p id="gov-vision-free"></p>
+            </div>
+            <div class="vision-block">
+              <h3>Support for the girl-child</h3>
+              <p id="gov-vision-girl"></p>
+            </div>
+            <p class="kv-note" id="gov-note"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- message from the Commissioner -->
+    <section class="section" id="commissioner">
+      <div class="container">
+        <div class="card leader-card">
+          <figure class="leader-photo">
+            <img id="comm-photo" alt="Portrait photograph of the Commissioner"
+                 loading="lazy" width="360" height="360">
+          </figure>
+          <div>
+            <span class="section-kicker">Message</span>
+            <h2 class="section-title">Message from the Commissioner</h2>
+            <p class="speaker-name" id="comm-name"></p>
+            <p class="muted" id="comm-title"></p>
+            <p id="comm-message"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- latest news -->
+    <section class="section alt">
+      <div class="container">
+        <div class="spread mb-2">
+          <div>
+            <span class="section-kicker">News</span>
+            <h2 class="section-title mb-0">Latest from the ministry</h2>
+          </div>
+          <a class="btn btn-outline btn-sm" href="/news.html">All news &rarr;</a>
+        </div>
+        <div class="grid grid-3" id="home-news">
+          <div class="empty-state"><strong>Loading…</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- circulars -->
+    <section class="section">
+      <div class="container">
+        <div class="spread mb-2">
+          <div>
+            <span class="section-kicker">Downloads</span>
+            <h2 class="section-title mb-0">Circulars &amp; forms</h2>
+          </div>
+          <a class="btn btn-outline btn-sm" href="/circulars.html">All downloads &rarr;</a>
+        </div>
+        <div id="home-circulars">
+          <div class="empty-state"><strong>Loading…</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LGA browse -->
+    <section class="section alt">
+      <div class="container">
+        <span class="section-kicker">Directory</span>
+        <h2 class="section-title">Schools across the 16 LGAs</h2>
+        <p class="section-lede">Select a Local Government Area to see the secondary, vocational and technical schools recorded in it.</p>
+        <div class="grid grid-4" id="home-lgas">
+          <div class="empty-state"><strong>Loading…</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- gallery -->
+    <section class="section" id="gallery">
+      <div class="container">
+        <span class="section-kicker">Gallery</span>
+        <h2 class="section-title">Schools in pictures</h2>
+        <div class="grid grid-2 gallery-grid">
+          <figure class="gallery-item">
+            <img id="gal1-img" alt="A classroom lesson in progress" loading="lazy"
+                 width="640" height="420">
+          </figure>
+          <figure class="gallery-item">
+            <img id="gal2-img" alt="Pupils with school backpacks" loading="lazy"
+                 width="640" height="420">
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- about / mission / vision -->
+    <section class="section" id="about">
+      <div class="container">
+        <span class="section-kicker">About us</span>
+        <h2 class="section-title">The ministry at a glance</h2>
+        <div class="grid grid-2 mt-2">
+          <div class="card">
+            <h3>Mission</h3>
+            <p id="about-mission" class="mb-0"></p>
+          </div>
+          <div class="card">
+            <h3>Vision</h3>
+            <p id="about-vision" class="mb-0"></p>
+          </div>
+        </div>
+        <div class="grid grid-2 mt-2">
+          <div class="card">
+            <h3>History</h3>
+            <p id="about-history" class="mb-0"></p>
+          </div>
+          <div class="card">
+            <h3>Statutory functions</h3>
+            <ul id="about-functions" class="mb-0"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section alt" id="faq">
+      <div class="container narrow">
+        <div class="center">
+          <span class="section-kicker">Help</span>
+          <h2 class="section-title">Frequently asked questions</h2>
+          <p class="section-lede" style="margin-left:auto;margin-right:auto">Straight answers about the portal and the ministry's services.</p>
+        </div>
+        <div id="home-faq">
+          <div class="empty-state"><strong>Loading…</strong></div>
+        </div>
+        <p class="center mt-2"><a class="btn btn-outline btn-sm" href="/faq.html">View all questions</a></p>
+      </div>
+    </section>
+
+    <!-- contact -->
+    <section class="section" id="contact">
+      <div class="container">
+        <div class="grid grid-2">
+          <div>
+            <span class="section-kicker">Contact</span>
+            <h2 class="section-title">Get in touch</h2>
+            <div class="detail-list" id="contact-list"></div>
+          </div>
+          <div class="card">
+            <h3>Need help on this portal?</h3>
+            <p>Use the chat bubble at the bottom right of your screen. The assistant answers from the ministry knowledge base, and you can ask for a member of staff at any time.</p>
+            <button class="btn" type="button" id="open-chat-btn">Open the chat</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="/js/app.js"></script>
+  <script src="/js/pages/home.js"></script>
+  <script src="/js/chat.js"></script>
+</body>
+</html>

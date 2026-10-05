@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Staff registration — Taraba State Ministry of Secondary, Vocational and Technical Education</title>
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body data-active="/register.html">
+  <div id="site-header"></div>
+
+  <main class="container">
+    <div class="auth-wrap wider">
+      <div class="auth-card">
+        <h1>Staff registration</h1>
+        <p class="auth-sub">Create your record with the ministry. An administrator reviews every registration before an account is issued.</p>
+
+        <div class="form-error hidden" id="reg-error"></div>
+        <div class="form-success hidden" id="reg-success"></div>
+        <div class="placeholder-note hidden" id="reg-closed">
+          Staff registration is currently closed. Please contact the ministry office.
+        </div>
+
+        <form id="reg-form" novalidate>
+          <div class="form-grid">
+            <div class="field span-2">
+              <label for="full_name">Full name <span class="muted">(as on your records)</span></label>
+              <input type="text" id="full_name" maxlength="120" required>
+            </div>
+            <div class="field">
+              <label for="email">Email address</label>
+              <input type="email" id="email" maxlength="160" required>
+            </div>
+            <div class="field">
+              <label for="phone">Phone number</label>
+              <input type="tel" id="phone" maxlength="40" placeholder="0800 000 0000" required>
+            </div>
+            <div class="field">
+              <label for="staff_number">File / staff number</label>
+              <input type="text" id="staff_number" maxlength="60" required>
+            </div>
+            <div class="field">
+              <label for="rank">Rank / designation</label>
+              <input type="text" id="rank" maxlength="80" placeholder="e.g. Principal, Teacher II" required>
+            </div>
+            <div class="field">
+              <label for="lga">LGA</label>
+              <select id="lga"><option value="">Select your LGA</option></select>
+            </div>
+            <div class="field">
+              <label for="school">School <span class="muted">(optional)</span></label>
+              <select id="school"><option value="">Select your school</option></select>
+            </div>
+            <div class="field span-2 hidden" id="school-name-wrap">
+              <label for="school_name">School name <span class="muted">(if not in the directory)</span></label>
+              <input type="text" id="school_name" maxlength="200">
+            </div>
+            <div class="field span-2">
+              <label for="photo">Passport photograph <span class="muted">(JPG/PNG/WEBP, max 3 MB)</span></label>
+              <input type="file" id="photo" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="check">
+              <input type="checkbox" id="consent">
+              <span id="privacy-text">I consent to the processing of my personal data as described in the ministry's privacy notice.</span>
+            </label>
+          </div>
+
+          <button class="btn btn-block btn-lg" type="submit" id="reg-btn">Submit registration</button>
+        </form>
+
+        <p class="auth-alt">Already approved? <a href="/login.html">Sign in</a></p>
+        <p class="auth-alt"><a href="/">&larr; Back to the public site</a></p>
+      </div>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="/js/app.js"></script>
+  <script src="/js/pages/register.js"></script>
+</body>
+</html>

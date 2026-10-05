@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin console — TSMSVTE Portal</title>
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body data-active="/admin.html" data-auth="true" data-admin="true">
+  <div id="site-header"></div>
+
+  <main class="container">
+    <div class="page-head">
+      <h1>Admin console</h1>
+      <p class="sub" id="admin-sub">Manage content, staff, schools and portal settings.</p>
+    </div>
+
+    <div class="admin-shell">
+      <nav class="side-nav" id="side-nav" aria-label="Admin sections">
+        <!-- populated by admin.js according to role -->
+      </nav>
+
+      <div class="admin-main" id="admin-main">
+        <div class="empty-state"><strong>Loading…</strong></div>
+      </div>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="/js/app.js"></script>
+  <script src="/js/pages/admin.js"></script>
+  <script src="/js/chat.js"></script>
+</body>
+</html>

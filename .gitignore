@@ -1,0 +1,28 @@
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+
+# Local uploads/data
+uploads/
+
+data/*.db
+data/*.db-*
+
+data/*.db
+data/*.db-*
+
+# Local database backups
+backups/

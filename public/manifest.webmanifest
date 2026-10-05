@@ -1,0 +1,13 @@
+{
+  "name": "Taraba State Ministry of Secondary, Vocational and Technical Education",
+  "short_name": "TSMSVTE",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b6b3a",
+  "theme_color": "#0b6b3a",
+  "description": "Official portal of the Taraba State Ministry of Secondary, Vocational and Technical Education.",
+  "icons": [
+    { "src": "/icons/logo-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/logo-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

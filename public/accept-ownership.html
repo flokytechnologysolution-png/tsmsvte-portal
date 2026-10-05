@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accept ownership — Taraba State Ministry of Secondary, Vocational and Technical Education</title>
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body data-active="" data-minimal="true">
+  <div id="site-header"></div>
+
+  <main class="container">
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <h1>Accept ownership of the portal</h1>
+        <p class="auth-sub">This one-time invitation transfers the OWNER role to you. It expires 48 hours after it was issued and can be used once.</p>
+
+        <div class="form-error hidden" id="to-error"></div>
+        <div class="form-success hidden" id="to-success"></div>
+
+        <div id="to-summary" class="detail-list mb-2 hidden">
+          <div class="r"><span class="k">New owner email</span><span class="v" id="to-email">—</span></div>
+          <div class="r"><span class="k">Invited by</span><span class="v" id="to-by">—</span></div>
+          <div class="r"><span class="k">Expires</span><span class="v" id="to-exp">—</span></div>
+        </div>
+
+        <form id="to-form" novalidate>
+          <div class="field">
+            <label for="token">Invitation token</label>
+            <input type="text" id="token" required>
+          </div>
+          <div class="field">
+            <label for="full_name">Your full name</label>
+            <input type="text" id="full_name" maxlength="120" required>
+          </div>
+          <div class="field">
+            <label for="password">Choose a password</label>
+            <input type="password" id="password" autocomplete="new-password" required>
+            <div class="hint">At least 8 characters, with letters and numbers.</div>
+          </div>
+          <div class="field">
+            <label for="confirm">Confirm password</label>
+            <input type="password" id="confirm" autocomplete="new-password" required>
+          </div>
+          <button class="btn btn-block btn-lg" type="submit" id="to-btn">Accept ownership</button>
+        </form>
+
+        <p class="auth-alt"><a href="/">&larr; Back to the public site</a></p>
+      </div>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="/js/app.js"></script>
+  <script src="/js/pages/accept-ownership.js"></script>
+</body>
+</html>

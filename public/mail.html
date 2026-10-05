@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portal mail — TSMSVTE Portal</title>
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body data-active="/mail.html" data-auth="true">
+  <div id="site-header"></div>
+
+  <main class="container">
+    <div class="page-head spread">
+      <div>
+        <h1>Portal mail</h1>
+        <p class="sub" id="mail-sub">Internal messages between portal users — nothing leaves this server.</p>
+      </div>
+      <button class="btn" type="button" id="compose-btn">&#9998; Compose</button>
+    </div>
+
+    <div class="mail-shell">
+      <nav class="mail-folders" id="folders" aria-label="Mail folders">
+        <button type="button" data-folder="inbox" class="active">Inbox <span class="n" id="n-inbox"></span></button>
+        <button type="button" data-folder="sent">Sent <span class="n" id="n-sent"></span></button>
+        <button type="button" data-folder="drafts">Drafts <span class="n" id="n-drafts"></span></button>
+        <button type="button" data-folder="trash">Trash <span class="n" id="n-trash"></span></button>
+      </nav>
+
+      <div>
+        <div class="filter-bar">
+          <div class="field grow">
+            <label for="q">Search mail</label>
+            <input type="search" id="q" placeholder="Subject, sender or body…">
+          </div>
+          <button class="btn" type="button" id="search-btn">Search</button>
+        </div>
+
+        <div id="mail-view">
+          <div class="mail-list" id="mail-list">
+            <div class="empty-state"><strong>Loading…</strong></div>
+          </div>
+          <div id="mail-pager"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="/js/app.js"></script>
+  <script src="/js/pages/mail.js"></script>
+</body>
+</html>
