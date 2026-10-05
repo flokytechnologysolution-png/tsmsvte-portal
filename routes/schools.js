@@ -8,7 +8,8 @@
 
 const express = require('express');
 const db = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
+const scope = require('../middleware/scope');
 const { csvMemory } = require('../middleware/upload');
 const { handleErrors, clean, toIntOrNull } = require('../middleware/validate');
 const { asyncHandler } = require('../middleware/errors');
@@ -96,11 +97,14 @@ router.get('/options', function (req, res) {
 router.get('/lgas', function (req, res) {
   /* `id` is included so administrative pickers (LGA-scoped roles) can post it
    * back; the summary fields are unchanged. */
+  const sc = scope.lgaListWhere(req.user, 'l');
+  const where = sc.sql ? (' WHERE ' + sc.sql) : '';
   const rows = db.prepare(
     `SELECT l.id, l.name, l.slug, COUNT(s.id) AS total
      FROM lgas l LEFT JOIN schools s ON s.lga = l.name AND s.status = 'active'
+     ${where}
      GROUP BY l.id ORDER BY l.sort_order`
-  ).all();
+  ).all(...sc.params);
   res.set('Cache-Control', 'public, max-age=60');
   res.json({ lgas: rows, total_lgas: rows.length });
 });
@@ -140,6 +144,11 @@ router.get('/', function (req, res) {
   if (db.SCHOOL_TYPES.indexOf(type) !== -1) { where.push('s.type = ?'); params.push(type); }
   if (db.SCHOOL_CATEGORIES.indexOf(category) !== -1) { where.push('s.category = ?'); params.push(category); }
   if (db.BOARDING_TYPES.indexOf(boarding) !== -1) { where.push('s.boarding = ?'); params.push(boarding); }
+
+  /* Scope is applied here, not in the filters above, so a scoped caller cannot
+   * widen their view by passing ?lga= of somebody else's. */
+  const sc = scope.schoolWhere(req.user, 's');
+  if (sc.sql) { where.push(sc.sql); params.push.apply(params, sc.params); }
 
   const whereSql = where.join(' AND ');
   const total = db.prepare('SELECT COUNT(*) AS n FROM schools s WHERE ' + whereSql).get(...params).n;
@@ -199,12 +208,18 @@ function readSchoolBody(body) {
   };
 }
 
-router.post('/', requireRole('ADMIN'), writeLimiter, function (req, res, next) {
+/* LGA_OFFICER may add schools inside their own LGA; SCHOOL_ADMIN may not add
+ * schools at all.  requireRole('ADMIN') is dropped here because it would refuse
+ * the LGA_OFFICER outright — requireSchoolCreate does the finer check. */
+router.post('/', requireAuth, scope.requireSchoolCreate, writeLimiter, function (req, res, next) {
   const parsed = readSchoolBody(req.body || {});
   if (parsed.errors.length) {
     return res.status(422).json({ error: parsed.errors[0], errors: parsed.errors });
   }
   const v = parsed.value;
+  if (!scope.canCreateSchool(req.user, v.lga)) {
+    return res.status(422).json({ error: 'You can only add schools inside your own LGA.' });
+  }
   try {
     const info = db.prepare(
       `INSERT INTO schools (name, lga, address, principal, phone, email, type, category, boarding, year_established, notes, status)
@@ -221,17 +236,15 @@ router.post('/', requireRole('ADMIN'), writeLimiter, function (req, res, next) {
 });
 
 /* NOTE: the numeric guard keeps /export.csv and /template.csv reachable. */
-router.get('/:id([0-9]+)', function (req, res) {
-  const id = toIntOrNull(req.params.id);
-  const row = id ? db.prepare('SELECT * FROM schools WHERE id = ?').get(id) : null;
-  if (!row) return res.status(404).json({ error: 'School not found' });
-  return res.json({ school: schoolFrom(row) });
+router.get('/:id([0-9]+)', scope.requireSchoolScope, function (req, res) {
+  return res.json({ school: schoolFrom(req.school) });
 });
 
-router.put('/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, function (req, res, next) {
-  const id = toIntOrNull(req.params.id);
-  const existing = id ? db.prepare('SELECT * FROM schools WHERE id = ?').get(id) : null;
-  if (!existing) return res.status(404).json({ error: 'School not found' });
+/* Scope decides who may reach the row at all (out-of-scope -> 404); the caller's
+ * scope kind then decides how much of the record they may rewrite. */
+router.put('/:id([0-9]+)', requireAuth, scope.requireSchoolScope, writeLimiter, function (req, res, next) {
+  const existing = req.school;
+  const id = existing.id;
 
   const parsed = readSchoolBody(Object.assign({}, existing, req.body || {}));
   if (parsed.errors.length) {
@@ -239,6 +252,16 @@ router.put('/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, function (req, re
   }
 
   const v = parsed.value;
+  const kind = scope.scopeOf(req.user).kind;
+  if (kind === 'lga' || kind === 'school') {
+    /* Nobody may relocate a record into or out of their own scope. */
+    v.lga = existing.lga;
+  }
+  if (kind === 'school') {
+    /* A school admin may not rename or retire their own record either. */
+    v.name = existing.name;
+    v.status = existing.status;
+  }
   v.id = id;
   try {
     db.prepare(
@@ -246,7 +269,9 @@ router.put('/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, function (req, re
         email=@email, type=@type, category=@category, boarding=@boarding, year_established=@year_established,
         notes=@notes, status=@status, updated_at=datetime('now') WHERE id=@id`
     ).run(v);
-    db.logAudit(req.user, 'school.update', 'school', id, { name: v.name }, req);
+    db.logAudit(req.user, 'school.update', 'school', id, {
+      name: v.name, scope: kind
+    }, req);
     return res.json({ ok: true });
   } catch (err) {
     if (String(err.message).indexOf('UNIQUE') !== -1) {
@@ -256,19 +281,29 @@ router.put('/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, function (req, re
   }
 });
 
-router.delete('/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, function (req, res) {
-  const id = toIntOrNull(req.params.id);
-  const row = id ? db.prepare('SELECT * FROM schools WHERE id = ?').get(id) : null;
-  if (!row) return res.status(404).json({ error: 'School not found' });
-  db.prepare('DELETE FROM schools WHERE id = ?').run(id);
-  db.logAudit(req.user, 'school.delete', 'school', id, { name: row.name }, req);
-  return res.json({ ok: true });
-});
+/* Deleting is a statewide action: an out-of-scope row is a 404, then a row the
+ * caller can see but not delete is a 403.  Nothing outside their scope leaks. */
+router.delete('/:id([0-9]+)', requireAuth, scope.requireSchoolScope, writeLimiter,
+  function (req, res) {
+    const row = req.school;
+    if (!scope.canDeleteSchool(req.user)) {
+      return res.status(403).json({ error: 'Your role cannot delete schools from the directory.' });
+    }
+    db.prepare('DELETE FROM schools WHERE id = ?').run(row.id);
+    db.logAudit(req.user, 'school.delete', 'school', row.id, { name: row.name }, req);
+    return res.json({ ok: true });
+  });
 
 /* ----------------------------- CSV import ----------------------------- */
 
-router.get('/export.csv', requireRole('ADMIN'), function (req, res) {
-  const rows = db.prepare('SELECT * FROM schools ORDER BY lga, name COLLATE NOCASE').all()
+/* Export and import honour the same scope as the list: an officer's export
+ * contains only their LGA, so it cannot become a side channel. */
+router.get('/export.csv', requireAuth, function (req, res) {
+  const sc = scope.schoolWhere(req.user, 's');
+  const where = sc.sql ? (' WHERE ' + sc.sql) : '';
+  const rows = db.prepare(
+    'SELECT * FROM schools s' + where + ' ORDER BY s.lga, s.name COLLATE NOCASE'
+  ).all(...sc.params)
     .map(function (r) {
       return {
         name: r.name, lga: r.lga, address: r.address, principal: r.principal, phone: r.phone,
@@ -282,12 +317,15 @@ router.get('/export.csv', requireRole('ADMIN'), function (req, res) {
   res.send(csv.toCsv(CSV_HEADERS, rows));
 });
 
-router.post('/import', requireRole('ADMIN'), writeLimiter, csvMemory.single('file'),
+router.post('/import', requireAuth, scope.requireSchoolCreate, writeLimiter, csvMemory.single('file'),
   asyncHandler(async function (req, res) {
     if (!req.file) return res.status(400).json({ error: 'Upload a CSV file (use the downloadable template).' });
     const dryRun = String(req.body.dry_run || '') === '1' || String(req.body.dry_run || '') === 'true';
     const rows = csv.toObjects(req.file.buffer.toString('utf8').slice(0, 2 * 1024 * 1024));
     if (!rows.length) return res.status(422).json({ error: 'The CSV file contains no data rows.' });
+    if (!scope.canImportSchools(req.user)) {
+      return res.status(403).json({ error: 'Your role cannot import schools.' });
+    }
 
     const report = { total: rows.length, created: 0, updated: 0, failed: 0, errors: [], dry_run: dryRun };
     const insert = db.prepare(
@@ -309,6 +347,14 @@ router.post('/import', requireRole('ADMIN'), writeLimiter, csvMemory.single('fil
           return;
         }
         const v = parsed.value;
+        /* A row naming another LGA is refused outright rather than rewritten. */
+        if (!scope.canCreateSchool(req.user, v.lga)) {
+          report.failed += 1;
+          if (report.errors.length < 60) {
+            report.errors.push({ row: i + 2, error: 'Outside your scope: ' + v.lga + '.' });
+          }
+          return;
+        }
         const had = exists.get(v.name, v.lga);
         if (dryRun) {
           if (had) report.updated += 1; else report.created += 1;

@@ -14,6 +14,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db');
 const { requireAuth, isAdminish, isOwner } = require('../middleware/auth');
+const scope = require('../middleware/scope');
 const { mailAttachments, relPath } = require('../middleware/upload');
 const { clean, toIntOrNull, handleErrors } = require('../middleware/validate');
 const { asyncHandler } = require('../middleware/errors');
@@ -88,7 +89,15 @@ router.get('/recipients', function (req, res) {
   const q = clean(req.query.q || '').toLowerCase().slice(0, 80);
 
   if (type === 'schools') {
-    return res.json({ schools: db.prepare('SELECT id, name, lga FROM schools ORDER BY name COLLATE NOCASE').all() });
+    /* Same scope as the directory itself: an officer composing a message can
+     * only address schools inside their own LGA. */
+    const sc = scope.schoolWhere(req.user, 's');
+    const where = sc.sql ? (' WHERE ' + sc.sql) : '';
+    return res.json({
+      schools: db.prepare(
+        'SELECT s.id, s.name, s.lga FROM schools s' + where + ' ORDER BY s.name COLLATE NOCASE'
+      ).all(...sc.params)
+    });
   }
   if (type === 'lgas') {
     return res.json({ lgas: db.prepare('SELECT name FROM lgas ORDER BY sort_order').all().map(function (r) { return r.name; }) });

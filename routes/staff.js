@@ -13,6 +13,7 @@ const bcrypt = require('bcrypt');
 const db = require('../db');
 const roles = require('../lib/roles');
 const { requireAuth, requireRole, requireNotOwnerTarget } = require('../middleware/auth');
+const scope = require('../middleware/scope');
 const { images, relPath } = require('../middleware/upload');
 const { clean, toIntOrNull, handleErrors } = require('../middleware/validate');
 const { asyncHandler } = require('../middleware/errors');
@@ -283,7 +284,12 @@ router.delete('/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, function (req,
 });
 
 /* ------------------------- admin: user accounts ------------------------ */
-router.get('/users/list', requireRole('ADMIN'), function (req, res) {
+/* --- user accounts -----------------------------------------------------
+ * OWNER/ADMIN see the whole state; LGA_OFFICER and SCHOOL_ADMIN get the same
+ * endpoint filtered to their slice of it (scope.userWhere).  Nobody in a scope
+ * ever receives an OWNER or ADMIN row.
+ */
+router.get('/users/list', scope.requireUserConsole, function (req, res) {
   const role = clean(req.query.role || '').toUpperCase();
   const q = clean(req.query.q || '').slice(0, 80);
   const where = [];
@@ -294,17 +300,24 @@ router.get('/users/list', requireRole('ADMIN'), function (req, res) {
    * search and the role filter unless the viewer is the owner. */
   const ownerClause = roles.hideOwnerFromSql(req.user);
   if (ownerClause) where.push(ownerClause);
+  /* The LGA / school slice.  Not applied for unscoped callers, who are
+   * already covered by the owner clause above. */
+  const sc = scope.userWhere(req.user, 'u');
+  if (sc.sql) { where.push(sc.sql); params.push.apply(params, sc.params); }
   const whereSql = where.length ? ' WHERE ' + where.filter(Boolean).join(' AND ') : '';
   const rows = db.prepare(
-    'SELECT id, email, full_name, role, status, phone, mail_address, lga_id, school_id, last_login_at, created_at FROM users' +
-    whereSql + " ORDER BY CASE role WHEN 'OWNER' THEN 0 WHEN 'ADMIN' THEN 1 WHEN 'LGA_OFFICER' THEN 2 " +
-    "WHEN 'SCHOOL_ADMIN' THEN 3 WHEN 'EDITOR' THEN 4 ELSE 5 END, full_name COLLATE NOCASE"
+    'SELECT u.id, u.email, u.full_name, u.role, u.status, u.phone, u.mail_address,' +
+    ' u.lga_id, u.school_id, u.last_login_at, u.created_at FROM users u' + whereSql +
+    " ORDER BY CASE u.role WHEN 'OWNER' THEN 0 WHEN 'ADMIN' THEN 1 WHEN 'LGA_OFFICER' THEN 2 " +
+    "WHEN 'SCHOOL_ADMIN' THEN 3 WHEN 'EDITOR' THEN 4 ELSE 5 END, u.full_name COLLATE NOCASE"
   ).all(...params);
   res.json({
     users: rows,
     roles: roles.ROLES,
     /* The editor only offers the roles this person may actually hand out. */
-    grantable_roles: roles.grantableRoles(req.user)
+    grantable_roles: roles.grantableRoles(req.user),
+    /* Lets the UI know it is looking at a slice rather than the full state. */
+    scope: scope.scopeOf(req.user).kind
   });
 });
 
