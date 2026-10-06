@@ -4,3 +4,14 @@ data/*.db
 uploads/
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+*.err.log
+
+# SQLite temp files
+*.db-shm
+*.db-wal
+
+# Backups
+backups/
