@@ -1,34 +1,6 @@
-Desktop.ini
-.DS_Store
-.vscode/
-.idea/
-*.swp
-
-# Environment secrets
-.env
-.env.*
-!.env.example
-
-# Dependencies
 node_modules/
-
-# Logs
-*.log
-
-# Local uploads/data
+.env
+data/*.db
 uploads/
-
-data/*.db
-data/*.db-*
-
-data/*.db
-data/*.db-*
-
-# Local database backups
-backups/
-
-# Accidental nested clones (a clone inside the project becomes an embedded repo)
-/tsmsvte-portal/
-
-# Test output
-*.err
+.DS_Store
+Thumbs.db
