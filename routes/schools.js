@@ -299,6 +299,15 @@ router.delete('/:id([0-9]+)', requireAuth, scope.requireSchoolScope, writeLimite
     if (!scope.canDeleteSchool(req.user)) {
       return res.status(403).json({ error: 'Your role cannot delete schools from the directory.' });
     }
+    /* A school with teachers on its books cannot be deleted: the register
+     * points at it, and silently orphaning people is worse than refusing. */
+    const held = db.prepare('SELECT COUNT(*) AS n FROM teachers WHERE school_id = ?').get(row.id);
+    if (held && held.n > 0) {
+      return res.status(409).json({
+        error: 'That school still has ' + held.n + ' teacher' + (held.n === 1 ? '' : 's') +
+          ' on its books. Transfer or remove them first.'
+      });
+    }
     db.prepare('DELETE FROM schools WHERE id = ?').run(row.id);
     db.logAudit(req.user, 'school.delete', 'school', row.id, { name: row.name }, req);
     return res.json({ ok: true });

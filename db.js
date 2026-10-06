@@ -64,6 +64,7 @@ const LGAS = [
 const SCHOOL_TYPES = ['junior_secondary', 'senior_secondary', 'technical', 'vocational'];
 const SCHOOL_CATEGORIES = ['boys', 'girls', 'mixed'];
 const BOARDING_TYPES = ['boarding', 'day', 'both'];
+const TEACHER_STATUSES = ['ACTIVE', 'TRANSFERRED', 'RETIRED', 'LEFT'];
 const ROLES = ['OWNER', 'ADMIN', 'LGA_OFFICER', 'SCHOOL_ADMIN', 'EDITOR', 'STAFF'];
 
 function slugify(text) {
@@ -222,6 +223,29 @@ CREATE TABLE IF NOT EXISTS staff (
   updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_staff_status ON staff (status);
+
+/* Teachers register (phase 1c).  staff_no is globally unique; school_id is a
+ * hard FK — deleting a school with teachers is refused both here (FK) and in
+ * routes/schools.js (friendly 409).  status: ACTIVE / TRANSFERRED / RETIRED /
+ * LEFT (see TEACHER_STATUSES). */
+CREATE TABLE IF NOT EXISTS teachers (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  school_id     INTEGER NOT NULL REFERENCES schools (id),
+  staff_no      TEXT NOT NULL UNIQUE,
+  full_name     TEXT NOT NULL,
+  sex           TEXT NOT NULL DEFAULT '',
+  date_of_birth TEXT NOT NULL DEFAULT '',
+  qualification TEXT NOT NULL DEFAULT '',
+  subject       TEXT NOT NULL DEFAULT '',
+  rank          TEXT NOT NULL DEFAULT '',
+  phone         TEXT NOT NULL DEFAULT '',
+  status        TEXT NOT NULL DEFAULT 'ACTIVE',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_teachers_school ON teachers (school_id);
+CREATE INDEX IF NOT EXISTS idx_teachers_status ON teachers (status);
+CREATE INDEX IF NOT EXISTS idx_teachers_subject ON teachers (subject);
 
 CREATE TABLE IF NOT EXISTS news (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -962,6 +986,7 @@ module.exports = {
   SCHOOL_TYPES: SCHOOL_TYPES,
   SCHOOL_CATEGORIES: SCHOOL_CATEGORIES,
   BOARDING_TYPES: BOARDING_TYPES,
+  TEACHER_STATUSES: TEACHER_STATUSES,
   ROLES: ROLES,
   DEFAULT_SETTINGS: DEFAULT_SETTINGS,
   /* Connection helpers so route modules can use `db.prepare(...)` directly.

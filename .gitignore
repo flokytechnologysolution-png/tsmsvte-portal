@@ -29,3 +29,6 @@ backups/
 
 # Accidental nested clones (a clone inside the project becomes an embedded repo)
 /tsmsvte-portal/
+
+# Test output
+*.err

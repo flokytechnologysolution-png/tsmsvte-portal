@@ -200,6 +200,14 @@
   function canEdit() {
     return state.user && ['OWNER', 'ADMIN', 'EDITOR'].indexOf(state.user.role) !== -1;
   }
+
+  /* The admin console beyond content editing: OWNER/ADMIN/EDITOR keep their
+   * sections, and the scoped school roles get exactly the Schools + Teachers
+   * sections (their APIs enforce the same scope server-side). */
+  function canConsole() {
+    return state.user && ['OWNER', 'ADMIN', 'EDITOR', 'LGA_OFFICER', 'SCHOOL_ADMIN']
+      .indexOf(state.user.role) !== -1;
+  }
   function setting(key, fallback) {
     const v = state.settings[key];
     return (v === undefined || v === null || v === '') ? (fallback === undefined ? '' : v) : v;
@@ -262,7 +270,7 @@
       links += '<span class="nav-sep" aria-hidden="true"></span>';
       links += navLink('/dashboard.html', 'My dashboard', active === '/dashboard.html');
       links += navLink('/mail.html', 'Portal mail' + (state.unreadMail ? ' (' + state.unreadMail + ')' : ''), active === '/mail.html');
-      if (canEdit()) links += navLink('/admin.html', 'Admin', active === '/admin.html');
+      if (canConsole()) links += navLink('/admin.html', 'Admin', active === '/admin.html');
     }
 
     let account = '';
@@ -520,7 +528,7 @@
         window.location.replace('/login.html?next=' + next);
         return null;
       }
-      if (meta.requiresAdmin && state.user && !canEdit()) {
+      if (meta.requiresAdmin && state.user && !canConsole()) {
         window.location.replace('/dashboard.html');
         return null;
       }
@@ -570,6 +578,7 @@
     setting: setting,
     isAdminish: isAdminish,
     canEdit: canEdit,
+    canConsole: canConsole,
     whenReady: function () { return bootPromise || Promise.resolve(null); },
     /* Small page helpers reused across several screens: */
     emptyState: function (title, note) {

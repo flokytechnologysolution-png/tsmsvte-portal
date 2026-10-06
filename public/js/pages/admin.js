@@ -15,7 +15,8 @@
   const SECTIONS = [
     { id: 'overview', label: 'Overview', roles: ['OWNER', 'ADMIN', 'EDITOR'] },
     { id: 'staff', label: 'Staff registrations', roles: ['OWNER', 'ADMIN'], pill: 'staffPending' },
-    { id: 'schools', label: 'Schools', roles: ['OWNER', 'ADMIN'] },
+    { id: 'schools', label: 'Schools', roles: ['OWNER', 'ADMIN', 'LGA_OFFICER', 'SCHOOL_ADMIN'] },
+    { id: 'teachers', label: 'Teachers', roles: ['OWNER', 'ADMIN', 'LGA_OFFICER', 'SCHOOL_ADMIN'] },
     { id: 'news', label: 'News', roles: ['OWNER', 'ADMIN', 'EDITOR'] },
     { id: 'events', label: 'Events', roles: ['OWNER', 'ADMIN', 'EDITOR'] },
     { id: 'circulars', label: 'Circulars', roles: ['OWNER', 'ADMIN'] },
@@ -625,6 +626,322 @@
         });
     });
   }
+  /* --------------------------------------------------------------------- *
+   * Teachers register (scoped: own school / own LGA / whole state)          *
+   * --------------------------------------------------------------------- */
+  const teacherFilters = { q: '', school_id: '', lga: '', subject: '', status: '', page: 1 };
+  const TEACHER_STATUSES = ['ACTIVE', 'TRANSFERRED', 'RETIRED', 'LEFT'];
+  let teacherOptions = { schools: [], lgas: [] };
+
+  function teacherQuery() {
+    const parts = ['page=' + teacherFilters.page, 'limit=25'];
+    if (teacherFilters.q) parts.push('q=' + encodeURIComponent(teacherFilters.q));
+    if (teacherFilters.school_id) parts.push('school_id=' + encodeURIComponent(teacherFilters.school_id));
+    if (teacherFilters.lga) parts.push('lga=' + encodeURIComponent(teacherFilters.lga));
+    if (teacherFilters.subject) parts.push('subject=' + encodeURIComponent(teacherFilters.subject));
+    if (teacherFilters.status) parts.push('status=' + encodeURIComponent(teacherFilters.status));
+    return parts.join('&');
+  }
+
+  function loadTeachers() {
+    section('teachers', 'Teachers',
+      '<div class="filter-bar">' +
+        '<div class="field grow"><label for="tc-q">Search</label>' +
+          '<input type="search" id="tc-q" placeholder="Name, staff no, subject or phone…" value="' +
+          App.esc(teacherFilters.q) + '"></div>' +
+        '<div class="field"><label for="tc-school">School</label>' +
+          '<select id="tc-school"><option value="">All schools</option></select></div>' +
+        '<div class="field"><label for="tc-lga">LGA</label>' +
+          '<select id="tc-lga"><option value="">All LGAs</option></select></div>' +
+        '<div class="field"><label for="tc-subject">Subject</label>' +
+          '<input id="tc-subject" maxlength="120" placeholder="e.g. Mathematics" value="' +
+          App.esc(teacherFilters.subject) + '"></div>' +
+        '<div class="field"><label for="tc-status">Status</label>' +
+          '<select id="tc-status"><option value="">All statuses</option>' +
+          TEACHER_STATUSES.map(function (s) {
+            return '<option value="' + s + '"' + (teacherFilters.status === s ? ' selected' : '') +
+              '>' + s.charAt(0) + s.slice(1).toLowerCase() + '</option>';
+          }).join('') + '</select></div>' +
+        '<button class="btn" type="button" id="tc-new">+ Add teacher</button>' +
+        '<a class="btn btn-ghost btn-sm" id="tc-export" href="/api/teachers/export.csv">Export</a>' +
+        '<a class="btn btn-ghost btn-sm" href="/api/teachers/template.csv">Template</a>' +
+        '<button class="btn btn-outline btn-sm" type="button" id="tc-import">CSV import</button>' +
+      '</div>' +
+      '<div id="tc-rows"><div class="empty-state"><strong>Loading…</strong></div></div>' +
+      '<div id="tc-pager"></div>');
+
+    App.on(document.getElementById('tc-new'), 'click', function () { teacherEditor(null); });
+    App.on(document.getElementById('tc-import'), 'click', teacherImportDialog);
+    App.on(document.getElementById('tc-q'), 'input', App.debounce(function () {
+      teacherFilters.q = document.getElementById('tc-q').value.trim();
+      teacherFilters.page = 1;
+      renderTeacherRows();
+    }, 300));
+    App.on(document.getElementById('tc-school'), 'change', function () {
+      teacherFilters.school_id = this.value; teacherFilters.page = 1; renderTeacherRows();
+    });
+    App.on(document.getElementById('tc-lga'), 'change', function () {
+      teacherFilters.lga = this.value; teacherFilters.page = 1; renderTeacherRows();
+    });
+    App.on(document.getElementById('tc-subject'), 'input', App.debounce(function () {
+      teacherFilters.subject = document.getElementById('tc-subject').value.trim();
+      teacherFilters.page = 1;
+      renderTeacherRows();
+    }, 300));
+    App.on(document.getElementById('tc-status'), 'change', function () {
+      teacherFilters.status = this.value; teacherFilters.page = 1; renderTeacherRows();
+    });
+
+    App.api('/api/teachers/options').then(function (d) {
+      teacherOptions = d || { schools: [], lgas: [] };
+      const schoolSel = document.getElementById('tc-school');
+      (teacherOptions.schools || []).forEach(function (s) {
+        const o = document.createElement('option');
+        o.value = s.id; o.textContent = s.name + ' (' + s.lga + ')';
+        schoolSel.appendChild(o);
+      });
+      schoolSel.value = teacherFilters.school_id;
+      const lgaSel = document.getElementById('tc-lga');
+      (teacherOptions.lgas || []).forEach(function (l) {
+        const o = document.createElement('option');
+        o.value = l.name; o.textContent = l.name;
+        lgaSel.appendChild(o);
+      });
+      lgaSel.value = teacherFilters.lga;
+    }).catch(function () { /* optional */ });
+
+    renderTeacherRows();
+  }
+
+  function statusBadge(status) {
+    const cls = status === 'ACTIVE' ? 'ok' : (status === 'TRANSFERRED' ? 'info' : 'warn');
+    return '<span class="badge ' + cls + '">' + App.esc(status) + '</span>';
+  }
+
+  function renderTeacherRows() {
+    const host = document.getElementById('tc-rows');
+    if (!host) return;
+    host.innerHTML = '<div class="empty-state"><strong>Loading…</strong></div>';
+    const exportLink = document.getElementById('tc-export');
+    if (exportLink) exportLink.href = '/api/teachers/export.csv?' + teacherQuery();
+
+    App.api('/api/teachers?' + teacherQuery()).then(function (d) {
+      if (!d.teachers.length) {
+        host.innerHTML = App.emptyState('No teachers recorded',
+          'Add teachers one at a time or bulk-import a CSV built from the downloadable template.');
+        document.getElementById('tc-pager').innerHTML = '';
+        return;
+      }
+      host.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
+        '<th>Teacher</th><th>Staff no</th><th>School</th><th>Subject</th><th>Phone</th><th>Status</th><th></th>' +
+        '</tr></thead><tbody>' +
+        d.teachers.map(function (t) {
+          return '<tr>' +
+            '<td><strong>' + App.esc(t.full_name) + '</strong><br><small>' +
+            App.esc(t.qualification || t.rank || '') + '</small></td>' +
+            '<td class="nowrap">' + App.esc(t.staff_no) + '</td>' +
+            '<td>' + App.esc(t.school_name || '') + '<br><small>' + App.esc(t.lga || '') + '</small></td>' +
+            '<td>' + App.esc(t.subject || '—') + '</td>' +
+            '<td class="nowrap">' + App.esc(t.phone || '—') + '</td>' +
+            '<td>' + statusBadge(t.status) + '</td>' +
+            '<td class="actions">' +
+              '<button class="btn btn-sm btn-outline" data-tc-edit="' + t.id + '">Edit</button> ' +
+              '<button class="btn btn-sm btn-danger" data-tc-del="' + t.id + '">Delete</button>' +
+            '</td>' +
+          '</tr>';
+        }).join('') +
+        '</tbody></table></div>';
+
+      document.getElementById('tc-pager').innerHTML = App.pager(d.page, d.pages, 'data-tcpage');
+      App.qsa('#tc-pager button[data-tcpage]').forEach(function (b) {
+        App.on(b, 'click', function () {
+          teacherFilters.page = Number(b.getAttribute('data-tcpage')) || 1;
+          renderTeacherRows();
+        });
+      });
+      App.qsa('[data-tc-edit]', main).forEach(function (b) {
+        App.on(b, 'click', function () {
+          const id = Number(b.getAttribute('data-tc-edit'));
+          const rec = d.teachers.find(function (x) { return x.id === id; });
+          teacherEditor(rec);
+        });
+      });
+      App.qsa('[data-tc-del]', main).forEach(function (b) {
+        App.on(b, 'click', function () {
+          const id = b.getAttribute('data-tc-del');
+          confirmDialog('Delete teacher', 'Remove this teacher record permanently? This cannot be undone.', 'Delete')
+            .then(function (ok) {
+              if (!ok) return;
+              App.busy(b, function () { return App.api('/api/teachers/' + id, { method: 'DELETE' }); })
+                .then(function () { App.toast('Teacher deleted.', 'ok'); renderTeacherRows(); })
+                .catch(function (err) { App.toast(err.message, 'err'); });
+            });
+        });
+      });
+    }).catch(failed);
+  }
+
+  /* --- teacher create / edit ---------------------------------------------- */
+  function teacherEditor(rec) {
+    const isNew = !rec;
+    App.api('/api/teachers/options').then(function (d) {
+      teacherOptions = d || teacherOptions;
+      const schools = teacherOptions.schools || [];
+      if (isNew && !schools.length) {
+        App.toast('No schools in your scope yet — add a school first.', 'err');
+        return;
+      }
+      const box = App.openModal(
+        '<h3>' + (isNew ? 'Add a teacher' : 'Edit teacher') + '</h3>' +
+        (isNew ? '' : '<p class="kv-note">Record #' + App.esc(rec.id) + '</p>') +
+        '<div class="form-grid">' +
+          '<div class="field span-2"><label for="tf-school">School *</label><select id="tf-school">' +
+            schools.map(function (s) {
+              return '<option value="' + s.id + '"' +
+                (rec && Number(rec.school_id) === Number(s.id) ? ' selected' : '') + '>' +
+                App.esc(s.name + ' (' + s.lga + ')') + '</option>';
+            }).join('') + '</select></div>' +
+          '<div class="field"><label for="tf-staff">Staff number *</label>' +
+            '<input id="tf-staff" maxlength="40" value="' + App.esc(rec ? rec.staff_no : '') + '"></div>' +
+          '<div class="field"><label for="tf-name">Full name *</label>' +
+            '<input id="tf-name" maxlength="120" value="' + App.esc(rec ? rec.full_name : '') + '"></div>' +
+          '<div class="field"><label for="tf-sex">Sex *</label><select id="tf-sex">' +
+            ['M', 'F'].map(function (v) {
+              return '<option value="' + v + '"' + (rec && rec.sex === v ? ' selected' : '') + '>' +
+                (v === 'M' ? 'Male' : 'Female') + '</option>';
+            }).join('') + '</select></div>' +
+          '<div class="field"><label for="tf-dob">Date of birth (YYYY-MM-DD) *</label>' +
+            '<input id="tf-dob" maxlength="10" placeholder="1985-03-12" value="' +
+            App.esc(rec ? rec.date_of_birth : '') + '"></div>' +
+          '<div class="field"><label for="tf-qual">Qualification *</label>' +
+            '<input id="tf-qual" maxlength="120" value="' + App.esc(rec ? rec.qualification : '') + '"></div>' +
+          '<div class="field"><label for="tf-subject">Subject *</label>' +
+            '<input id="tf-subject" maxlength="120" value="' + App.esc(rec ? rec.subject : '') + '"></div>' +
+          '<div class="field"><label for="tf-rank">Rank *</label>' +
+            '<input id="tf-rank" maxlength="120" value="' + App.esc(rec ? rec.rank : '') + '"></div>' +
+          '<div class="field"><label for="tf-phone">Phone *</label>' +
+            '<input id="tf-phone" maxlength="40" value="' + App.esc(rec ? rec.phone : '') + '"></div>' +
+          '<div class="field"><label for="tf-status">Status</label><select id="tf-status">' +
+            TEACHER_STATUSES.map(function (s) {
+              return '<option value="' + s + '"' +
+                ((!rec && s === 'ACTIVE') || (rec && rec.status === s) ? ' selected' : '') + '>' +
+                s.charAt(0) + s.slice(1).toLowerCase() + '</option>';
+            }).join('') + '</select></div>' +
+        '</div>' +
+        '<p class="form-error" id="tf-err" hidden></p>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-ghost" type="button" id="tf-cancel">Cancel</button>' +
+          '<button class="btn" type="button" id="tf-save">' + (isNew ? 'Add teacher' : 'Save changes') +
+          '</button>' +
+        '</div>', { wide: true });
+
+      App.on(box.querySelector('#tf-cancel'), 'click', App.closeModal);
+      App.on(box.querySelector('#tf-save'), 'click', function () {
+        const payload = {
+          school_id: Number(box.querySelector('#tf-school').value),
+          staff_no: box.querySelector('#tf-staff').value.trim(),
+          full_name: box.querySelector('#tf-name').value.trim(),
+          sex: box.querySelector('#tf-sex').value,
+          date_of_birth: box.querySelector('#tf-dob').value.trim(),
+          qualification: box.querySelector('#tf-qual').value.trim(),
+          subject: box.querySelector('#tf-subject').value.trim(),
+          rank: box.querySelector('#tf-rank').value.trim(),
+          phone: box.querySelector('#tf-phone').value.trim(),
+          status: box.querySelector('#tf-status').value
+        };
+        const err = box.querySelector('#tf-err');
+        err.hidden = true;
+        if (!payload.staff_no || !payload.full_name) {
+          err.hidden = false;
+          err.textContent = 'Staff number and full name are required.';
+          return;
+        }
+        App.busy(this, function () {
+          return App.api(isNew ? '/api/teachers' : '/api/teachers/' + rec.id,
+            { method: isNew ? 'POST' : 'PUT', body: payload });
+        }).then(function () {
+          App.closeModal();
+          App.toast(isNew ? 'Teacher added.' : 'Teacher updated.', 'ok');
+          renderTeacherRows();
+        }).catch(function (e) {
+          err.hidden = false;
+          err.textContent = e.message;
+        });
+      });
+    }).catch(failed);
+  }
+
+  /* --- teacher CSV import (preview first, then commit) --------------------- */
+  function teacherImportReport(r, dryRun) {
+    let html = '<div class="placeholder-note">' + (dryRun ? 'Dry run: ' : 'Result: ') +
+      r.total + ' row(s) read — <strong>' + r.created + '</strong> ' +
+      (dryRun ? 'ready' : 'imported') + ', <strong>' + r.invalid + '</strong> rejected.</div>';
+    if (r.truncated) {
+      html += '<p class="kv-note">Showing ' + (r.errors || []).length + ' of ' + r.invalid +
+        ' bad rows — fix the file and preview again to see the rest.</p>';
+    }
+    return html + errorList(r.errors);
+  }
+
+  function teacherImportDialog() {
+    const box = App.openModal(
+      '<h3>Bulk import teachers</h3>' +
+      '<p>Download the <a href="/api/teachers/template.csv">CSV template</a>, fill it in, then upload it. ' +
+      'Rows must name a school and LGA inside your scope; bad rows are skipped and listed.</p>' +
+      '<div class="field"><label for="tcsv-file">CSV file</label>' +
+        '<input id="tcsv-file" type="file" accept=".csv,text/csv"></div>' +
+      '<div class="field"><label for="tcsv-mode">If some rows are bad</label>' +
+        '<select id="tcsv-mode"><option value="">Import the good rows</option>' +
+        '<option value="all">Import nothing (all or nothing)</option></select></div>' +
+      '<p class="kv-note">Always preview first — a real import writes to the database immediately.</p>' +
+      '<div id="tcsv-report"></div>' +
+      '<div class="modal-actions">' +
+        '<button class="btn btn-ghost" type="button" id="tcsv-cancel">Cancel</button>' +
+        '<button class="btn btn-outline" type="button" id="tcsv-check">Preview</button>' +
+        '<button class="btn" type="button" id="tcsv-go" disabled>Import for real</button>' +
+      '</div>');
+
+    const fileInput = box.querySelector('#tcsv-file');
+    const report = box.querySelector('#tcsv-report');
+    const go = box.querySelector('#tcsv-go');
+    let picked = null;
+
+    const send = function (dryRun) {
+      const fd = new FormData();
+      fd.append('file', picked);
+      if (dryRun) fd.append('dry_run', '1');
+      if (box.querySelector('#tcsv-mode').value === 'all') fd.append('mode', 'all');
+      return App.apiForm('/api/teachers/import', fd);
+    };
+
+    App.on(box.querySelector('#tcsv-cancel'), 'click', App.closeModal);
+    App.on(fileInput, 'change', function () {
+      picked = this.files && this.files[0] ? this.files[0] : null;
+      go.disabled = !picked;
+      report.innerHTML = '';
+    });
+    App.on(box.querySelector('#tcsv-check'), 'click', function () {
+      if (!picked) return;
+      App.busy(this, function () { return send(true); }).then(function (data) {
+        report.innerHTML = teacherImportReport(data.report, true);
+        go.disabled = data.report.valid === 0;
+      }).catch(function (e) { App.toast(e.message, 'err'); });
+    });
+    App.on(go, 'click', function () {
+      if (!picked) return;
+      confirmDialog('Import for real', 'This writes ' + picked.name + ' to the database. Continue?', 'Import')
+        .then(function (ok) {
+          if (!ok) return;
+          App.busy(go, function () { return send(false); }).then(function (data) {
+            App.closeModal();
+            App.toast('Imported: ' + data.report.created + ' added, ' +
+              data.report.invalid + ' rejected.', 'ok');
+            renderTeacherRows();
+          }).catch(function (e) { App.toast(e.message, 'err'); });
+        });
+    });
+  }
+
   /* --------------------------------------------------------------------- *
    * Events (EDITOR and above)                                              *
    * --------------------------------------------------------------------- */
@@ -2508,6 +2825,7 @@
     overview: loadOverview,
     staff: loadStaff,
     schools: loadSchools,
+    teachers: loadTeachers,
     news: loadNews,
     events: loadEvents,
     circulars: loadCirculars,

@@ -103,6 +103,45 @@ function requireSchoolScope(req, res, next) {
   req.school = row;
   return next();
 }
+
+/* ------------------------------- teachers ------------------------------ */
+
+/**
+ * A WHERE fragment restricting a `teachers` query to the caller's scope.
+ * Teachers inherit their visibility from the school they belong to, so a
+ * broken scope assignment fails CLOSED (matches nothing) exactly like
+ * schoolWhere does.
+ * @returns {{sql:string, params:Array}} sql is '' when unrestricted.
+ */
+function teacherWhere(user, alias) {
+  const t = alias || 't';
+  const s = scopeOf(user);
+  if (s.kind === 'all') return { sql: '', params: [] };
+  if (s.kind === 'lga') {
+    return { sql: t + '.school_id IN (SELECT sc.id FROM schools sc WHERE sc.lga_id = ?)', params: [s.lgaId] };
+  }
+  if (s.kind === 'school') return { sql: t + '.school_id = ?', params: [s.schoolId] };
+  return { sql: '1 = 0', params: [] };            /* fail closed */
+}
+
+/**
+ * Guard for any /:id teacher route.  A teacher that exists but sits at a
+ * school outside the caller's scope is indistinguishable from one that does
+ * not exist (404, never 403), same rule as the schools.
+ */
+function requireTeacherScope(req, res, next) {
+  const id = toIntOrNull(req.params.id);
+  const row = id ? db.prepare('SELECT * FROM teachers WHERE id = ?').get(id) : null;
+  const school = row
+    ? db.prepare('SELECT * FROM schools WHERE id = ?').get(row.school_id)
+    : null;
+  if (!row || !canViewSchool(req.user, school)) {
+    return res.status(404).json({ error: 'Teacher not found' });
+  }
+  req.teacher = row;
+  return next();
+}
+
 /** A WHERE fragment restricting a query over the `lgas` table itself. */
 function lgaListWhere(user, alias) {
   const l = alias || 'l';
@@ -231,6 +270,21 @@ function requireUserList(req, res, next) {
   return res.status(403).json({ error: 'You do not have permission to do that' });
 }
 
+/**
+ * Reading AND writing the teachers register is open to exactly four roles:
+ * OWNER, ADMIN (whole state), LGA_OFFICER (their LGA) and SCHOOL_ADMIN
+ * (their one school).  EDITOR and STAFF are content/self-service roles and
+ * are refused outright; a scope that cannot be resolved is refused too,
+ * never shown an empty register that looks like a working one.
+ */
+function requireTeacherConsole(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+  const r = req.user.role;
+  const allowed = r === 'OWNER' || r === 'ADMIN' || r === 'LGA_OFFICER' || r === 'SCHOOL_ADMIN';
+  if (allowed && scopeOf(req.user).kind !== 'none') return next();
+  return res.status(403).json({ error: 'You do not have permission to do that' });
+}
+
 module.exports = {
   lgaNameById: lgaNameById,
   scopeOf: scopeOf,
@@ -239,6 +293,9 @@ module.exports = {
   lgaListWhere: lgaListWhere,
   canViewSchool: canViewSchool,
   requireSchoolScope: requireSchoolScope,
+  teacherWhere: teacherWhere,
+  requireTeacherScope: requireTeacherScope,
+  requireTeacherConsole: requireTeacherConsole,
   userWhere: userWhere,
   canViewUser: canViewUser,
   SCHOOL_ADMIN_FIELDS: SCHOOL_ADMIN_FIELDS,
