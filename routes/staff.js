@@ -288,8 +288,14 @@ router.delete('/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, function (req,
  * OWNER/ADMIN see the whole state; LGA_OFFICER and SCHOOL_ADMIN get the same
  * endpoint filtered to their slice of it (scope.userWhere).  Nobody in a scope
  * ever receives an OWNER or ADMIN row.
+ *
+ * Reading is wider than writing: scope.requireUserList also lets a
+ * SCHOOL_ADMIN see their own school's accounts, while scope.requireUserConsole
+ * (the write gate used below) refuses them outright.  EDITOR and STAFF get 403
+ * from both, exactly as they did when these routes sat behind
+ * requireRole('ADMIN').
  */
-router.get('/users/list', scope.requireUserConsole, function (req, res) {
+router.get('/users/list', scope.requireUserList, function (req, res) {
   const role = clean(req.query.role || '').toUpperCase();
   const q = clean(req.query.q || '').slice(0, 80);
   const where = [];
@@ -326,7 +332,7 @@ router.get('/users/list', scope.requireUserConsole, function (req, res) {
  * SCHOOL_ADMIN, EDITOR and STAFF.  An LGA_OFFICER can create SCHOOL_ADMINs,
  * and only inside their own LGA.
  */
-router.post('/users', requireRole('ADMIN'), writeLimiter, function (req, res) {
+router.post('/users', scope.requireUserConsole, writeLimiter, function (req, res) {
   const email = clean(req.body.email).toLowerCase().slice(0, 160);
   const fullName = clean(req.body.full_name).slice(0, 120);
   const phone = clean(req.body.phone).slice(0, 40);
@@ -346,12 +352,18 @@ router.post('/users', requireRole('ADMIN'), writeLimiter, function (req, res) {
     return res.status(403).json({ error: 'You are not allowed to create a ' + check.value.role + ' account.' });
   }
 
-  /* An LGA Officer may only appoint inside their own LGA. */
+  /* An LGA Officer may only appoint inside their own LGA.  The check runs
+   * against the school's lga_id — the same FK the scope rules use — and a
+   * school whose LGA text never matched (lga_id IS NULL) belongs to nobody,
+   * so it is refused rather than assumed to be theirs. */
   if (req.user.role === 'LGA_OFFICER') {
-    const school = schoolId ? db.prepare('SELECT id, lga FROM schools WHERE id = ?').get(schoolId) : null;
+    const school = schoolId ? db.prepare('SELECT id, lga_id FROM schools WHERE id = ?').get(schoolId) : null;
     if (!school) return res.status(422).json({ error: 'Choose a school.' });
-    const myLga = req.user.lga_id ? db.prepare('SELECT name FROM lgas WHERE id = ?').get(req.user.lga_id) : null;
-    if (!myLga || myLga.name !== school.lga) {
+    const mine = toIntOrNull(req.user.lga_id);
+    if (toIntOrNull(school.lga_id) === null || toIntOrNull(school.lga_id) !== mine) {
+      return res.status(403).json({ error: 'You can only appoint inside your own LGA.' });
+    }
+    if (check.value.lga_id !== null && toIntOrNull(check.value.lga_id) !== mine) {
       return res.status(403).json({ error: 'You can only appoint inside your own LGA.' });
     }
   }
@@ -375,10 +387,15 @@ router.post('/users', requireRole('ADMIN'), writeLimiter, function (req, res) {
   return res.status(201).json({ ok: true, id: info.lastInsertRowid, mail_address: mail });
 });
 
-router.put('/users/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, requireNotOwnerTarget, function (req, res) {
+router.put('/users/:id([0-9]+)', scope.requireUserConsole, writeLimiter, requireNotOwnerTarget, function (req, res) {
   const id = toIntOrNull(req.params.id);
   const user = id ? db.prepare('SELECT * FROM users WHERE id = ?').get(id) : null;
   if (!user) return res.status(404).json({ error: 'User not found' });
+  /* Outside the caller's scope the account simply does not exist: 404, never
+   * 403, so a guessed id cannot confirm that it is there. */
+  if (!scope.canViewUser(req.user, user)) return res.status(404).json({ error: 'User not found' });
+  /* Nobody may change their own role, lga_id or school_id — or their own
+   * status while they are at it. */
   if (user.id === req.user.id) return res.status(409).json({ error: 'You cannot change your own role or status here.' });
   /* requireNotOwnerTarget already answered 404 for the owner; this is belt
    * and braces in case the route is ever reused without the guard. */
@@ -387,6 +404,16 @@ router.put('/users/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, requireNotO
    * demote, suspend or disable a peer. */
   if (user.role === 'ADMIN' && req.user.role !== 'OWNER') {
     return res.status(404).json({ error: 'Not found' });
+  }
+  /* And who may touch this account at all?  For an officer that resolves to
+   * "the SCHOOL_ADMINs of my own LGA only" — every other role in their list is
+   * a 403, because GRANTABLE.LGA_OFFICER holds nothing else. */
+  const manage = roles.canManageUser(req.user, user);
+  if (!manage.ok) {
+    const missing = manage.reason === 'notfound';
+    return res.status(missing ? 404 : 403).json({
+      error: missing ? 'Not found' : 'You are not allowed to change this account.'
+    });
   }
   /* And nobody may promote somebody to a role they cannot hand out. */
   const wanted = clean(req.body.role || '').toUpperCase();
@@ -399,6 +426,21 @@ router.put('/users/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, requireNotO
     toIntOrNull(req.body.school_id) || user.school_id);
   if (check.errors.length) return res.status(422).json({ error: check.errors[0], errors: check.errors });
 
+  /* An officer may never move an account into another LGA — not by naming the
+   * LGA directly, and not by attaching it to a school in somebody else's. */
+  if (req.user.role === 'LGA_OFFICER') {
+    const mine = toIntOrNull(req.user.lga_id);
+    if (check.value.lga_id !== null && toIntOrNull(check.value.lga_id) !== mine) {
+      return res.status(403).json({ error: 'You can only manage accounts inside your own LGA.' });
+    }
+    if (check.value.school_id !== null) {
+      const sc = db.prepare('SELECT lga_id FROM schools WHERE id = ?').get(check.value.school_id);
+      if (!sc || toIntOrNull(sc.lga_id) === null || toIntOrNull(sc.lga_id) !== mine) {
+        return res.status(403).json({ error: 'You can only manage accounts inside your own LGA.' });
+      }
+    }
+  }
+
   const status = req.body.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
 
   db.prepare(
@@ -410,20 +452,30 @@ router.put('/users/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, requireNotO
   return res.json({ ok: true });
 });
 
-router.post('/users/:id([0-9]+)/reset-token', requireRole('ADMIN'), writeLimiter, requireNotOwnerTarget, function (req, res) {
+router.post('/users/:id([0-9]+)/reset-token', scope.requireUserConsole, writeLimiter, requireNotOwnerTarget, function (req, res) {
   const id = toIntOrNull(req.params.id);
   const user = id ? db.prepare('SELECT * FROM users WHERE id = ?').get(id) : null;
   if (!user) return res.status(404).json({ error: 'User not found' });
+  /* Outside the caller's scope the account does not exist: 404, never 403. */
+  if (!scope.canViewUser(req.user, user)) return res.status(404).json({ error: 'User not found' });
   /* The OWNER is 404 for everyone else (see requireNotOwnerTarget).  An
    * ADMIN's password may only be reset by the OWNER. */
   if (user.role === 'ADMIN' && req.user.role !== 'OWNER') {
     return res.status(403).json({ error: 'Only the owner can reset an administrator password.' });
   }
+  /* An officer may issue a token only for an account they could actually
+   * manage: the SCHOOL_ADMINs of their own LGA, nobody else. */
+  if (req.user.role === 'LGA_OFFICER' && !roles.canManageUser(req.user, user).ok) {
+    const own = user.id === req.user.id;
+    return res.status(own ? 404 : 403).json({
+      error: own ? 'User not found' : 'You can only reset passwords for accounts you manage.'
+    });
+  }
   const tok = db.createToken({
     userId: user.id, email: user.email, purpose: 'password_reset',
     ttlMinutes: 60 * 24 * 3, meta: { issued_by: req.user.id }
   });
-  db.logAudit(req.user, 'user.reset_token', 'user', user.id, {}, req);
+  db.logAudit(req.user, 'user.reset_token', 'user', user.id, { target_role: user.role }, req);
   return res.json({ ok: true, reset_token: tok.token, reset_expires: tok.expiresAt,
     note: 'One-time token, shown only once.' });
 });

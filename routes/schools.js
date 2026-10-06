@@ -24,13 +24,16 @@ const CSV_HEADERS = ['name', 'lga', 'address', 'principal', 'phone', 'email',
 function lgaLookup() {
   const map = {};
   const key = function (v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]/g, ''); };
-  db.prepare('SELECT name, slug FROM lgas').all().forEach(function (r) {
-    map[r.name.toLowerCase()] = r.name;
-    map[r.slug] = r.name;
+  db.prepare('SELECT id, name, slug FROM lgas').all().forEach(function (r) {
+    /* The entry carries the id as well as the display name so the write paths
+     * can set schools.lga_id from a row they have actually validated. */
+    const hit = { id: r.id, name: r.name };
+    map[r.name.toLowerCase()] = hit;
+    map[r.slug] = hit;
     /* Also accept any spacing/hyphenation, so a list written before the
      * "Karim-Lamido" rename (e.g. "Karim Lamido") still matches. */
-    map[key(r.name)] = r.name;
-    map[key(r.slug)] = r.name;
+    map[key(r.name)] = hit;
+    map[key(r.slug)] = hit;
   });
   return map;
 }
@@ -101,7 +104,7 @@ router.get('/lgas', function (req, res) {
   const where = sc.sql ? (' WHERE ' + sc.sql) : '';
   const rows = db.prepare(
     `SELECT l.id, l.name, l.slug, COUNT(s.id) AS total
-     FROM lgas l LEFT JOIN schools s ON s.lga = l.name AND s.status = 'active'
+     FROM lgas l LEFT JOIN schools s ON s.lga_id = l.id AND s.status = 'active'
      ${where}
      GROUP BY l.id ORDER BY l.sort_order`
   ).all(...sc.params);
@@ -173,7 +176,11 @@ function readSchoolBody(body) {
   const name = clean(body.name).slice(0, 200);
   const lgaRaw = clean(body.lga);
   const lgaKey = lgaRaw.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const lga = lgas[lgaRaw.toLowerCase()] || lgas[db.slugify(lgaRaw)] || lgas[lgaKey] || '';
+  const hit = lgas[lgaRaw.toLowerCase()] || lgas[db.slugify(lgaRaw)] || lgas[lgaKey] || null;
+  const lga = hit ? hit.name : '';
+  /* The id is only ever taken from a row that matched the real lgas table —
+   * an unknown name yields null and is rejected below, never guessed. */
+  const lgaId = hit ? hit.id : null;
   const type = normType(body.type);
   const category = normCategory(body.category);
   const boarding = normBoarding(body.boarding);
@@ -181,7 +188,7 @@ function readSchoolBody(body) {
   const errors = [];
 
   if (!name) errors.push('School name is required.');
-  if (!lga) errors.push('LGA must be one of the 16 Taraba State LGAs.');
+  if (!lga || !lgaId) errors.push('LGA must be one of the 16 Taraba State LGAs.');
   if (!type) errors.push('Type must be junior_secondary, senior_secondary, technical or vocational.');
   if (!category) errors.push('Category must be boys, girls or mixed.');
   if (!boarding) errors.push('Boarding must be boarding, day or both.');
@@ -194,6 +201,7 @@ function readSchoolBody(body) {
     value: {
       name: name,
       lga: lga,
+      lga_id: lgaId,
       address: clean(body.address).slice(0, 300),
       principal: clean(body.principal).slice(0, 120),
       phone: clean(body.phone).slice(0, 40),
@@ -217,13 +225,13 @@ router.post('/', requireAuth, scope.requireSchoolCreate, writeLimiter, function 
     return res.status(422).json({ error: parsed.errors[0], errors: parsed.errors });
   }
   const v = parsed.value;
-  if (!scope.canCreateSchool(req.user, v.lga)) {
+  if (!scope.canCreateSchool(req.user, v.lga_id)) {
     return res.status(422).json({ error: 'You can only add schools inside your own LGA.' });
   }
   try {
     const info = db.prepare(
-      `INSERT INTO schools (name, lga, address, principal, phone, email, type, category, boarding, year_established, notes, status)
-       VALUES (@name, @lga, @address, @principal, @phone, @email, @type, @category, @boarding, @year_established, @notes, @status)`
+      `INSERT INTO schools (name, lga, lga_id, address, principal, phone, email, type, category, boarding, year_established, notes, status)
+       VALUES (@name, @lga, @lga_id, @address, @principal, @phone, @email, @type, @category, @boarding, @year_established, @notes, @status)`
     ).run(v);
     db.logAudit(req.user, 'school.create', 'school', info.lastInsertRowid, { name: v.name, lga: v.lga }, req);
     return res.status(201).json({ ok: true, id: info.lastInsertRowid });
@@ -254,8 +262,10 @@ router.put('/:id([0-9]+)', requireAuth, scope.requireSchoolScope, writeLimiter, 
   const v = parsed.value;
   const kind = scope.scopeOf(req.user).kind;
   if (kind === 'lga' || kind === 'school') {
-    /* Nobody may relocate a record into or out of their own scope. */
+    /* Nobody may relocate a record into or out of their own scope — the text
+     * column and the FK are pinned together. */
     v.lga = existing.lga;
+    v.lga_id = existing.lga_id;
   }
   if (kind === 'school') {
     /* A school admin may not rename or retire their own record either. */
@@ -265,7 +275,7 @@ router.put('/:id([0-9]+)', requireAuth, scope.requireSchoolScope, writeLimiter, 
   v.id = id;
   try {
     db.prepare(
-      `UPDATE schools SET name=@name, lga=@lga, address=@address, principal=@principal, phone=@phone,
+      `UPDATE schools SET name=@name, lga=@lga, lga_id=@lga_id, address=@address, principal=@principal, phone=@phone,
         email=@email, type=@type, category=@category, boarding=@boarding, year_established=@year_established,
         notes=@notes, status=@status, updated_at=datetime('now') WHERE id=@id`
     ).run(v);
@@ -329,12 +339,12 @@ router.post('/import', requireAuth, scope.requireSchoolCreate, writeLimiter, csv
 
     const report = { total: rows.length, created: 0, updated: 0, failed: 0, errors: [], dry_run: dryRun };
     const insert = db.prepare(
-      `INSERT INTO schools (name, lga, address, principal, phone, email, type, category, boarding, year_established, notes, status)
-       VALUES (@name, @lga, @address, @principal, @phone, @email, @type, @category, @boarding, @year_established, @notes, @status)
+      `INSERT INTO schools (name, lga, lga_id, address, principal, phone, email, type, category, boarding, year_established, notes, status)
+       VALUES (@name, @lga, @lga_id, @address, @principal, @phone, @email, @type, @category, @boarding, @year_established, @notes, @status)
        ON CONFLICT (name, lga) DO UPDATE SET
          address=excluded.address, principal=excluded.principal, phone=excluded.phone, email=excluded.email,
          type=excluded.type, category=excluded.category, boarding=excluded.boarding,
-         year_established=excluded.year_established, updated_at=datetime('now')`
+         lga_id=excluded.lga_id, year_established=excluded.year_established, updated_at=datetime('now')`
     );
     const exists = db.prepare('SELECT id FROM schools WHERE name = ? AND lga = ?');
 
@@ -348,7 +358,7 @@ router.post('/import', requireAuth, scope.requireSchoolCreate, writeLimiter, csv
         }
         const v = parsed.value;
         /* A row naming another LGA is refused outright rather than rewritten. */
-        if (!scope.canCreateSchool(req.user, v.lga)) {
+        if (!scope.canCreateSchool(req.user, v.lga_id)) {
           report.failed += 1;
           if (report.errors.length < 60) {
             report.errors.push({ row: i + 2, error: 'Outside your scope: ' + v.lga + '.' });

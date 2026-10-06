@@ -405,6 +405,9 @@ function execute(schoolPlan, samplePlan, dryRun) {
     }
   });
   tx();
+  /* Sample schools are inserted with schools.lga only; fill schools.lga_id
+   * from the validated LGA name right away (see the migration in db.js). */
+  db.backfillSchoolLgaIds();
 }
 
 /* ------------------------------------------------------------------ *

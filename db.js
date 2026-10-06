@@ -478,6 +478,68 @@ CREATE INDEX IF NOT EXISTS idx_login_attempts_locked ON login_attempts (locked_u
 })();
 
 /* ------------------------------------------------------------------ *
+ * schools.lga_id (safe, additive migration).
+ *
+ * `schools.lga` keeps the canonical LGA NAME: that is what the directory,
+ * the CSV export and every public page display, and what a ministry CSV
+ * written before the "Karim-Lamido" rename still contains.  `schools.lga_id`
+ * is the real FK to lgas(id) and is the ONLY thing the isolation rules in
+ * middleware/scope.js match on, so a spelling can never widen or shrink
+ * somebody's scope.
+ *
+ * Existing rows are filled once from the text, case-, hyphen- and space-
+ * tolerant ("karim lamido" == "Karim-Lamido" == "KARIM_LAMIDO").  A row whose
+ * LGA text matches none of the 16 real LGAs is left NULL and logged — never
+ * guessed at — so it stays visible to the statewide roles and invisible to
+ * the scoped ones until a human corrects it.  Only NULL rows are touched, so
+ * running it again is harmless (tools/seed.js calls it after seeding).
+ * ------------------------------------------------------------------ */
+(function addSchoolLgaIdColumn() {
+  const has = db.pragma('table_info(schools)').some(function (c) { return c.name === 'lga_id'; });
+  if (!has) db.exec('ALTER TABLE schools ADD COLUMN lga_id INTEGER REFERENCES lgas (id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_schools_lga_id ON schools (lga_id)');
+})();
+
+/** Case/space/hyphen/punctuation-tolerant key: "Karim-Lamido" == "karim lamido". */
+function normLgaKey(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Fill schools.lga_id from the schools.lga text for every row that lacks it.
+ * Unmatched schools keep NULL and are logged individually — no guessing.
+ * @returns {{matched:number, unmatched:number}}
+ */
+function backfillSchoolLgaIds() {
+  const pending = db.prepare('SELECT id, name, lga FROM schools WHERE lga_id IS NULL').all();
+  if (!pending.length) return { matched: 0, unmatched: 0 };
+
+  const byKey = Object.create(null);
+  db.prepare('SELECT id, name FROM lgas').all().forEach(function (lga) {
+    byKey[normLgaKey(lga.name)] = lga.id;
+  });
+  const setLga = db.prepare('UPDATE schools SET lga_id = ? WHERE id = ? AND lga_id IS NULL');
+  const report = { matched: 0, unmatched: 0 };
+
+  const apply = db.transaction(function (rows) {
+    rows.forEach(function (school) {
+      const lgaId = byKey[normLgaKey(school.lga)];
+      if (lgaId) {
+        setLga.run(lgaId, school.id);
+        report.matched += 1;
+        return;
+      }
+      report.unmatched += 1;
+      console.warn('[migrate] schools.lga_id: no LGA matches "' + school.lga +
+        '" — school #' + school.id + ' "' + school.name + '" left with a NULL lga_id.');
+    });
+  });
+  apply(pending);
+  return report;
+}
+
+/* ------------------------------------------------------------------ *
  * Per-recipient SMS log (safe, additive migration).
  *
  * One row per recipient for every bulk send, so a failure is never hidden by
@@ -883,6 +945,14 @@ function seed() {
 
 const _owner = seed();
 
+/* The 16 LGAs only exist once seed() has run, so the one-time fill of
+ * schools.lga_id has to happen after it. */
+const _backfill = backfillSchoolLgaIds();
+if (_backfill.matched || _backfill.unmatched) {
+  console.log('[migrate] schools.lga_id backfill: ' + _backfill.matched + ' matched, ' +
+    _backfill.unmatched + ' left NULL (see warnings above).');
+}
+
 module.exports = {
   db: db,
   DB_FILE: DB_FILE,
@@ -925,6 +995,8 @@ module.exports = {
   createToken: createToken,
   consumeToken: consumeToken,
   now: now,
+  normLgaKey: normLgaKey,
+  backfillSchoolLgaIds: backfillSchoolLgaIds,
   seed: seed,
   seededOwner: _owner
 };

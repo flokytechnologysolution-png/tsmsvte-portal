@@ -1,8 +1,9 @@
 /**
  * middleware/scope.js — LGA / school isolation for the scoped roles.
  *
- * schools.lga holds the canonical LGA NAME (text) while users.lga_id holds an
- * lgas.id, so every rule here resolves one into the other.  The rules are:
+ * schools.lga holds the canonical LGA NAME (text) purely for display; the
+ * scope rules below match on the real FK columns only — schools.lga_id and
+ * users.lga_id — so no spelling can widen or shrink a scope.  The rules are:
  *
  *   OWNER / ADMIN            every school in the state.
  *   LGA_OFFICER              only schools in their own LGA; only users
@@ -23,16 +24,8 @@ const db = require('../db');
 const roles = require('../lib/roles');
 const { toIntOrNull } = require('./validate');
 
-/** Case/space/hyphen-insensitive key, so "Karim Lamido" == "Karim-Lamido". */
-function normKey(v) {
-  return String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-/** The same normalisation expressed in SQL, for filtering a schools table. */
-function normLgaSql(alias) {
-  return "lower(replace(replace(replace(replace(" + alias +
-    ".lga,' ',''),'-',''),'.',''),'''',''))";
-}
+/* The tolerant text matching that fills schools.lga_id lives in db.normLgaKey
+ * (see the one-time backfill in db.js).  Nothing here matches on text any more. */
 
 function lgaNameById(id) {
   const row = toIntOrNull(id) ? db.prepare('SELECT name FROM lgas WHERE id = ?').get(toIntOrNull(id)) : null;
@@ -56,9 +49,11 @@ function scopeOf(user) {
   }
   if (user.role === 'SCHOOL_ADMIN') {
     const s = toIntOrNull(user.school_id)
-      ? db.prepare('SELECT id, lga FROM schools WHERE id = ?').get(toIntOrNull(user.school_id))
+      ? db.prepare('SELECT id, lga, lga_id FROM schools WHERE id = ?').get(toIntOrNull(user.school_id))
       : null;
-    return s ? { kind: 'school', schoolId: s.id, lgaName: s.lga } : { kind: 'none' };
+    return s
+      ? { kind: 'school', schoolId: s.id, lgaId: toIntOrNull(s.lga_id), lgaName: s.lga }
+      : { kind: 'none' };
   }
   return { kind: 'none' };
 }
@@ -77,12 +72,7 @@ function schoolWhere(user, alias) {
   const a = alias || 's';
   const s = scopeOf(user);
   if (s.kind === 'all') return { sql: '', params: [] };
-  if (s.kind === 'lga') {
-    return {
-      sql: '(' + a + '.lga = ? COLLATE NOCASE OR ' + normLgaSql(a) + ' = ?)',
-      params: [s.lgaName, normKey(s.lgaName)]
-    };
-  }
+  if (s.kind === 'lga') return { sql: a + '.lga_id = ?', params: [s.lgaId] };
   if (s.kind === 'school') return { sql: a + '.id = ?', params: [s.schoolId] };
   return { sql: '1 = 0', params: [] };            /* fail closed */
 }
@@ -93,7 +83,8 @@ function canViewSchool(user, row) {
   const s = scopeOf(user);
   if (s.kind === 'all') return true;
   if (s.kind === 'lga') {
-    return row.lga === s.lgaName || normKey(row.lga) === normKey(s.lgaName);
+    /* A row with no lga_id (an unmatched LGA name) belongs to nobody's scope. */
+    return toIntOrNull(row.lga_id) !== null && toIntOrNull(row.lga_id) === toIntOrNull(s.lgaId);
   }
   if (s.kind === 'school') return row.id === s.schoolId;
   return false;
@@ -119,8 +110,8 @@ function lgaListWhere(user, alias) {
   if (s.kind === 'all') return { sql: '', params: [] };
   if (s.kind === 'lga') return { sql: l + '.id = ?', params: [s.lgaId] };
   if (s.kind === 'school') {
-    const row = db.prepare('SELECT id FROM lgas WHERE name = ? COLLATE NOCASE').get(s.lgaName);
-    return row ? { sql: l + '.id = ?', params: [row.id] } : { sql: '1 = 0', params: [] };
+    /* The LGA of the school they administer — by id, never by spelling. */
+    return s.lgaId ? { sql: l + '.id = ?', params: [s.lgaId] } : { sql: '1 = 0', params: [] };
   }
   return { sql: '1 = 0', params: [] };
 }
@@ -145,9 +136,8 @@ function userWhere(user, alias) {
   if (s.kind === 'lga') {
     /* Users pinned to this LGA, plus anyone attached to a school inside it. */
     parts.push('(' + u + '.lga_id = ? OR ' + u + '.school_id IN (' +
-      'SELECT sc.id FROM schools sc WHERE sc.lga = ? COLLATE NOCASE OR ' +
-      normLgaSql('sc') + ' = ?))');
-    params.push(s.lgaId, s.lgaName, normKey(s.lgaName));
+      'SELECT sc.id FROM schools sc WHERE sc.lga_id = ?))');
+    params.push(s.lgaId, s.lgaId);
   } else {
     parts.push(u + '.school_id = ?');
     params.push(s.schoolId);
@@ -166,8 +156,9 @@ function canViewUser(user, target) {
   if (s.kind === 'lga') {
     if (target.lga_id && Number(target.lga_id) === Number(s.lgaId)) return true;
     if (!target.school_id) return false;
-    const sc = db.prepare('SELECT lga FROM schools WHERE id = ?').get(target.school_id);
-    return Boolean(sc) && normKey(sc.lga) === normKey(s.lgaName);
+    const sc = db.prepare('SELECT lga_id FROM schools WHERE id = ?').get(target.school_id);
+    return Boolean(sc) && toIntOrNull(sc.lga_id) !== null &&
+      toIntOrNull(sc.lga_id) === toIntOrNull(s.lgaId);
   }
   if (s.kind === 'school') return Number(target.school_id) === Number(s.schoolId);
   return false;
@@ -179,11 +170,11 @@ function canViewUser(user, target) {
 const SCHOOL_ADMIN_FIELDS = ['address', 'principal', 'phone', 'email', 'type',
   'category', 'boarding', 'year_established', 'notes'];
 
-/** May this user create a school in the given LGA? */
-function canCreateSchool(user, lgaName) {
+/** May this user create a school in the given LGA (a validated lgas.id)? */
+function canCreateSchool(user, lgaId) {
   const s = scopeOf(user);
   if (s.kind === 'all') return true;               /* OWNER / ADMIN */
-  if (s.kind === 'lga') return normKey(lgaName) === normKey(s.lgaName);
+  if (s.kind === 'lga') return toIntOrNull(lgaId) !== null && toIntOrNull(lgaId) === s.lgaId;
   return false;                                    /* SCHOOL_ADMIN and 'none' */
 }
 
@@ -212,19 +203,35 @@ function requireSchoolCreate(req, res, next) {
 }
 
 /**
- * Who may open the user-account console at all?  OWNER and ADMIN see the whole
- * state; the two scoped roles see their slice; everyone else is refused.
+ * Who may enter the user-account console to WRITE?  OWNER, ADMIN and the LGA
+ * officer.  SCHOOL_ADMIN has no account management at all — every write route
+ * answers 403 for them — and EDITOR / STAFF never had any either: before this
+ * gate they were refused by requireRole('ADMIN'), and they still are.
  */
 function requireUserConsole(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Authentication required' });
-  const kind = scopeOf(req.user).kind;
-  if (kind === 'all' || kind === 'lga' || kind === 'school') return next();
+  const r = req.user.role;
+  const allowed = r === 'OWNER' || r === 'ADMIN' || r === 'LGA_OFFICER';
+  /* A scope that cannot be resolved is refused rather than shown an empty
+   * directory: a broken assignment must never look like a working one. */
+  if (allowed && scopeOf(req.user).kind !== 'none') return next();
+  return res.status(403).json({ error: 'You do not have permission to do that' });
+}
+
+/**
+ * Reading the account list is one notch wider: a SCHOOL_ADMIN may see their
+ * own school's accounts (scope.userWhere keeps the slice tight) but can never
+ * change one.  EDITOR and STAFF are still refused.
+ */
+function requireUserList(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+  const r = req.user.role;
+  const allowed = r === 'OWNER' || r === 'ADMIN' || r === 'LGA_OFFICER' || r === 'SCHOOL_ADMIN';
+  if (allowed && scopeOf(req.user).kind !== 'none') return next();
   return res.status(403).json({ error: 'You do not have permission to do that' });
 }
 
 module.exports = {
-  normKey: normKey,
-  normLgaSql: normLgaSql,
   lgaNameById: lgaNameById,
   scopeOf: scopeOf,
   isScopedUser: isScopedUser,
@@ -239,5 +246,6 @@ module.exports = {
   canImportSchools: canImportSchools,
   canDeleteSchool: canDeleteSchool,
   requireSchoolCreate: requireSchoolCreate,
-  requireUserConsole: requireUserConsole
+  requireUserConsole: requireUserConsole,
+  requireUserList: requireUserList
 };
