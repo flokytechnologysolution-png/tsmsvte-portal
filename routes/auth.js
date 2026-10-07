@@ -22,96 +22,86 @@ router.get('/csrf', function (req, res) {
   res.json({ csrfToken: res.locals.csrfToken });
 });
 
-router.get('/me', function (req, res) {
+router.get('/me', asyncHandler(async function (req, res) {
   if (!req.user) return res.json({ user: null });
-  const staff = db.prepare('SELECT * FROM staff WHERE user_id = ?').get(req.user.id);
-  const unread = db.prepare(
-    'SELECT COUNT(*) AS n FROM message_recipients WHERE user_id = ? AND is_read = 0 AND is_deleted = 0'
-  ).get(req.user.id).n;
+  const staff = await db.get('SELECT * FROM staff WHERE user_id = ?', [req.user.id]);
+  const unreadRow = await db.get(
+    'SELECT COUNT(*) AS n FROM message_recipients WHERE user_id = ? AND is_read = 0 AND is_deleted = 0',
+    [req.user.id]
+  );
+  const unread = unreadRow ? unreadRow.n : 0;
   return res.json({
     user: auth.publicUser(req.user),
     staff: staff || null,
     unread_mail: unread,
-    settings: db.getPublicSettings()
+    settings: await db.getPublicSettings()
   });
-});
+}));
 
 /* --- Public quick stats for the home page ----------------------------- */
-router.get('/stats', function (req, res) {
-  const schools = db.prepare("SELECT COUNT(*) AS n FROM schools WHERE status = 'active'").get().n;
-  const staff = db.prepare("SELECT COUNT(*) AS n FROM staff WHERE status = 'APPROVED'").get().n;
-  const news = db.prepare("SELECT COUNT(*) AS n FROM news WHERE status = 'published'").get().n;
-  const circulars = db.prepare("SELECT COUNT(*) AS n FROM circulars WHERE status = 'published'").get().n;
-  const byLga = db.prepare(
+router.get('/stats', asyncHandler(async function (req, res) {
+  const schoolsRow = await db.get("SELECT COUNT(*) AS n FROM schools WHERE status = 'active'");
+  const staffRow = await db.get("SELECT COUNT(*) AS n FROM staff WHERE status = 'APPROVED'");
+  const newsRow = await db.get("SELECT COUNT(*) AS n FROM news WHERE status = 'published'");
+  const circularsRow = await db.get("SELECT COUNT(*) AS n FROM circulars WHERE status = 'published'");
+  const byLga = await db.query(
     `SELECT l.name, COUNT(s.id) AS total FROM lgas l
      LEFT JOIN schools s ON s.lga = l.name AND s.status = 'active'
      GROUP BY l.id ORDER BY l.sort_order`
-  ).all();
+  );
   res.set('Cache-Control', 'public, max-age=60');
   res.json({
-    schools: schools,
-    staff: staff,
-    news: news,
-    circulars: circulars,
+    schools: schoolsRow ? schoolsRow.n : 0,
+    staff: staffRow ? staffRow.n : 0,
+    news: newsRow ? newsRow.n : 0,
+    circulars: circularsRow ? circularsRow.n : 0,
     lgas: 16,
     schools_per_lga: byLga
   });
-});
+}));
 
 /* ------------------------------------------------------------------ *
  * Per-account login lockout (defence against password guessing)
  * ------------------------------------------------------------------ */
+const LOCK_WINDOW_MINUTES = 15;
+const LOCK_THRESHOLD = 5;
+const LOCK_BASE_MINUTES = 1;
+const LOCK_MAX_MINUTES = 30;
 
-/* Account locks always expire on their own, so nobody — including the OWNER —
- * can be locked out permanently. */
-const LOCK_WINDOW_MINUTES = 15;    /* failures are counted inside this window */
-const LOCK_THRESHOLD = 5;          /* failures before the account is locked  */
-const LOCK_BASE_MINUTES = 1;       /* first lock lasts 1 minute               */
-const LOCK_MAX_MINUTES = 30;       /* ... doubling each time, capped at 30    */
-
-/** Returns { locked: boolean, retryMinutes: number }. */
-function lockState(email) {
-  const live = db.prepare(
+async function lockState(email) {
+  const live = await db.get(
     `SELECT locked_until FROM login_attempts
-     WHERE email = ? AND locked_until IS NOT NULL AND datetime(locked_until) > datetime('now')`
-  ).get(email);
+     WHERE email = ? AND locked_until IS NOT NULL AND locked_until > CURRENT_TIMESTAMP`,
+    [email]
+  );
   if (!live) {
-    /* No live lock. Clear the expiry so the next failure re-locks, but KEEP
-     * failed_count: that is what makes the backoff grow (1, 2, 4, 8 ... 30
-     * minutes) instead of always restarting at 1 minute. first_failed_at is
-     * reset so the 15-minute counting window starts again. */
-    db.prepare(
+    await db.run(
       `UPDATE login_attempts SET locked_until = NULL, first_failed_at = NULL
-       WHERE email = ? AND locked_until IS NOT NULL AND datetime(locked_until) <= datetime('now')`
-    ).run(email);
+       WHERE email = ? AND locked_until IS NOT NULL AND locked_until <= CURRENT_TIMESTAMP`,
+      [email]
+    );
     return { locked: false, retryMinutes: 0 };
   }
-  const mins = Math.max(1, Math.ceil(
-    (new Date(String(live.locked_until).replace(' ', 'T') + 'Z') - Date.now()) / 60000));
+  const lockedUntil = new Date(live.locked_until);
+  const mins = Math.max(1, Math.ceil((lockedUntil.getTime() - Date.now()) / 60000));
   return { locked: true, retryMinutes: mins };
 }
 
-/* SQLite datetime('now') is UTC; format our JS dates the same way so the
- * comparisons in lockState() are always apples to apples. */
 function utcStamp(date) {
   return date.toISOString().slice(0, 19).replace('T', ' ');
 }
 
-function recordFailure(email) {
+async function recordFailure(email) {
   const now = new Date();
-  const row = db.prepare('SELECT * FROM login_attempts WHERE email = ?').get(email);
+  const row = await db.get('SELECT * FROM login_attempts WHERE email = ?', [email]);
   let count = 1;
 
   if (row) {
     if (row.first_failed_at) {
       const firstMs = Date.parse(String(row.first_failed_at).replace(' ', 'T') + 'Z');
-      const withinWindow = !isNaN(firstMs) &&
-        (now.getTime() - firstMs) < LOCK_WINDOW_MINUTES * 60000;
+      const withinWindow = !isNaN(firstMs) && (now.getTime() - firstMs) < LOCK_WINDOW_MINUTES * 60000;
       count = withinWindow ? (row.failed_count || 0) + 1 : 1;
     } else {
-      /* A previous lock has just expired and the counter was deliberately
-       * kept (see lockState). Keep escalating from there so the backoff
-       * really does grow instead of restarting at one minute. */
       count = (row.failed_count || 0) + 1;
     }
   }
@@ -121,29 +111,26 @@ function recordFailure(email) {
     : 0;
   const lockedUntil = minutes ? utcStamp(new Date(now.getTime() + minutes * 60000)) : null;
 
-  db.prepare(
-    `INSERT INTO login_attempts (email, failed_count, first_failed_at, locked_until, updated_at)
-     VALUES (?, ?, ?, ?, datetime('now'))
+  const sql = `INSERT INTO login_attempts (email, failed_count, first_failed_at, locked_until, updated_at)
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
      ON CONFLICT (email) DO UPDATE SET
        failed_count = excluded.failed_count,
        first_failed_at = excluded.first_failed_at,
        locked_until = excluded.locked_until,
-       updated_at = datetime('now')`
-  ).run(email, count, utcStamp(now), lockedUntil);
+       updated_at = CURRENT_TIMESTAMP`;
+  
+  await db.run(sql, [email, count, utcStamp(now), lockedUntil]);
 
   if (minutes) {
-    db.logAudit(null, 'auth.login.locked', 'user', '', { email: email, minutes: minutes }, null);
+    await db.logAudit(null, 'auth.login.locked', 'user', '', { email: email, minutes: minutes }, null);
   }
 }
 
-function clearFailures(email) {
-  db.prepare('DELETE FROM login_attempts WHERE email = ?').run(email);
+async function clearFailures(email) {
+  await db.run('DELETE FROM login_attempts WHERE email = ?', [email]);
 }
 
 /* --- Login ------------------------------------------------------------ */
-/* The lockout message is deliberately the SAME generic text as a bad
- * password, and the bcrypt comparison still runs for unknown accounts, so
- * nothing about which addresses exist can be inferred. */
 const LOGIN_FAILED = 'Those sign-in details are not correct.';
 
 router.post('/login', loginLimiter, asyncHandler(async function (req, res) {
@@ -154,48 +141,43 @@ router.post('/login', loginLimiter, asyncHandler(async function (req, res) {
     return res.status(422).json({ error: 'Enter your email address and password.' });
   }
 
-  const lock = lockState(email);
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  /* Always run a comparison so timing does not reveal whether the account exists. */
+  const lock = await lockState(email);
+  const user = await db.get('SELECT * FROM users WHERE email = ?', [email]);
+  
   const hash = user ? user.password_hash : '$2b$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinv';
   const ok = bcrypt.compareSync(password, hash);
 
   if (lock.locked) {
-    db.logAudit(null, 'auth.login.blocked', 'user', '', { email: email }, req);
+    await db.logAudit(null, 'auth.login.blocked', 'user', '', { email: email }, req);
     return res.status(401).json({ error: LOGIN_FAILED });
   }
   if (!user || !ok) {
-    recordFailure(email);
-    db.logAudit(null, 'auth.login.failed', 'user', '', { email: email }, req);
+    await recordFailure(email);
+    await db.logAudit(null, 'auth.login.failed', 'user', '', { email: email }, req);
     return res.status(401).json({ error: LOGIN_FAILED });
   }
   if (user.status !== 'ACTIVE') {
     return res.status(403).json({ error: 'This account is not active. Please contact the ministry administrator.' });
   }
 
-  clearFailures(email);
+  await clearFailures(email);
   auth.setAuthCookie(res, auth.signToken(user));
-  db.prepare("UPDATE users SET last_login_at = datetime('now') WHERE id = ?").run(user.id);
-  db.logAudit(user, 'auth.login', 'user', user.id, { role: user.role }, req);
+  await db.run("UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?", [user.id]);
+  await db.logAudit(user, 'auth.login', 'user', user.id, { role: user.role }, req);
 
-  return res.json({ ok: true, user: auth.publicUser(user), redirect: homeFor(user.role) });
-}), handleErrors);
+  return res.json({ ok: true, user: auth.publicUser(user), redirect: require('../lib/roles').homeFor(user.role) });
+}));
 
-function homeFor(role) {
-  return require('../lib/roles').homeFor(role);
-}
-
-router.post('/logout', function (req, res) {
-  if (req.user) db.logAudit(req.user, 'auth.logout', 'user', req.user.id, '', req);
+router.post('/logout', asyncHandler(async function (req, res) {
+  if (req.user) await db.logAudit(req.user, 'auth.logout', 'user', req.user.id, '', req);
   auth.clearAuthCookie(res);
   res.json({ ok: true });
-});
-
-
+}));
 
 /* --- Staff self-registration ------------------------------------------ */
 router.post('/register', registerLimiter, images.single('photo'), asyncHandler(async function (req, res) {
-  if (db.getSetting('registration_open', '1') !== '1') {
+  const isOpen = await db.getSetting('registration_open', '1');
+  if (isOpen !== '1') {
     return res.status(403).json({ error: 'Staff registration is currently closed. Please contact the ministry office.' });
   }
 
@@ -218,7 +200,7 @@ router.post('/register', registerLimiter, images.single('photo'), asyncHandler(a
   if (!consented) errors.push('Please accept the privacy notice to continue.');
   if (errors.length) return res.status(422).json({ error: errors[0], errors: errors });
 
-  const dupe = db.prepare("SELECT id, status FROM staff WHERE lower(email) = ? AND status != 'REJECTED'").get(email);
+  const dupe = await db.get("SELECT id, status FROM staff WHERE lower(email) = ? AND status != 'REJECTED'", [email]);
   if (dupe) {
     return res.status(409).json({
       error: dupe.status === 'APPROVED'
@@ -227,24 +209,25 @@ router.post('/register', registerLimiter, images.single('photo'), asyncHandler(a
     });
   }
 
-  const school = schoolId ? db.prepare('SELECT * FROM schools WHERE id = ?').get(schoolId) : null;
+  const school = schoolId ? await db.get('SELECT * FROM schools WHERE id = ?', [schoolId]) : null;
   const lgaValue = school ? school.lga : lga;
-
-  const info = db.prepare(
+  const photoPath = req.file ? require('../middleware/upload').relPath(req.file.path) : '';
+  
+  const info = await db.run(
     `INSERT INTO staff (full_name, phone, email, staff_number, rank, school_id, school_name, lga, photo, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')`
-  ).run(
-    fullName, phone, email, staffNumber, rank,
-    school ? school.id : null,
-    school ? school.name : clean(req.body.school_name).slice(0, 200),
-    lgaValue,
-    req.file ? require('../middleware/upload').relPath(req.file.path) : ''
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')`,
+    [
+      fullName, phone, email, staffNumber, rank,
+      school ? school.id : null,
+      school ? school.name : clean(req.body.school_name).slice(0, 200),
+      lgaValue,
+      photoPath
+    ]
   );
 
-  db.logAudit(null, 'staff.register', 'staff', info.lastInsertRowid, { email: email, lga: lgaValue }, req);
+  await db.logAudit(null, 'staff.register', 'staff', info.lastInsertRowid, { email: email, lga: lgaValue }, req);
 
-  /* Tell the administrators there is something to review. */
-  db.notifyRole(['OWNER', 'ADMIN'], 'New staff registration',
+  await db.notifyRole(['OWNER', 'ADMIN'], 'New staff registration',
     fullName + ' (' + rank + ') has registered and is awaiting approval.', '/admin.html#staff');
   realtime.sendToAdmins({ type: 'staff:pending', id: Number(info.lastInsertRowid), name: fullName });
 
@@ -254,7 +237,7 @@ router.post('/register', registerLimiter, images.single('photo'), asyncHandler(a
     status: 'PENDING',
     message: 'Your registration has been received. A ministry administrator will review it and you will be notified when your account is approved.'
   });
-}), handleErrors);
+}));
 
 /* --- Password reset (token is generated by an administrator) ---------- */
 router.post('/reset-password', loginLimiter, asyncHandler(async function (req, res) {
@@ -268,37 +251,38 @@ router.post('/reset-password', loginLimiter, asyncHandler(async function (req, r
   }
   if (password !== confirm) return res.status(422).json({ error: 'The two passwords do not match.' });
 
-  const row = db.consumeToken(token, 'password_reset');
+  const row = await db.consumeToken(token, 'password_reset');
   if (!row || !row.user_id) {
     return res.status(400).json({ error: 'That reset token is not valid, has expired, or has already been used.' });
   }
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
+  const user = await db.get('SELECT * FROM users WHERE id = ?', [row.user_id]);
   if (!user) return res.status(400).json({ error: 'That reset token is not valid any more.' });
 
-  db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?")
-    .run(bcrypt.hashSync(password, 10), user.id);
-  db.logAudit(user, 'auth.password_reset', 'user', user.id, '', req);
+  await db.run("UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    [bcrypt.hashSync(password, 10), user.id]);
+  await db.logAudit(user, 'auth.password_reset', 'user', user.id, '', req);
   return res.json({ ok: true, message: 'Your password has been changed. You can now sign in.' });
-}), handleErrors);
+}));
 
 /* --- Ownership transfer: inspect and accept the invitation ------------ */
-router.get('/transfer', function (req, res) {
+router.get('/transfer', asyncHandler(async function (req, res) {
   const token = clean(req.query.token || '').slice(0, 200);
   if (!token) return res.status(400).json({ error: 'Missing invitation token.' });
   const hash = crypto.createHash('sha256').update(token).digest('hex');
-  const row = db.prepare(
+  const row = await db.get(
     `SELECT * FROM tokens WHERE token_hash = ? AND purpose = 'ownership_transfer'
-     AND used_at IS NULL AND datetime(expires_at) > datetime('now')`
-  ).get(hash);
+     AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`,
+    [hash]
+  );
   if (!row) return res.status(400).json({ error: 'This transfer invitation is not valid or has expired.' });
-  const current = db.prepare("SELECT full_name FROM users WHERE role = 'OWNER' LIMIT 1").get();
+  const current = await db.get("SELECT full_name FROM users WHERE role = 'OWNER' LIMIT 1");
   return res.json({
     ok: true,
     email: row.email,
     invited_by: current ? current.full_name : '',
     expires_at: row.expires_at
   });
-});
+}));
 
 router.post('/transfer/accept', loginLimiter, asyncHandler(async function (req, res) {
   const token = clean(req.body.token).slice(0, 200);
@@ -314,39 +298,38 @@ router.post('/transfer/accept', loginLimiter, asyncHandler(async function (req, 
   if (password !== confirm) return res.status(422).json({ error: 'The two passwords do not match.' });
 
   const hash = crypto.createHash('sha256').update(token).digest('hex');
-  const invitation = db.prepare(
+  const invitation = await db.get(
     `SELECT * FROM tokens WHERE token_hash = ? AND purpose = 'ownership_transfer'
-     AND used_at IS NULL AND datetime(expires_at) > datetime('now')`
-  ).get(hash);
+     AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`,
+    [hash]
+  );
   if (!invitation) return res.status(400).json({ error: 'This transfer invitation is not valid or has expired.' });
 
   const email = invitation.email;
   const hashPw = bcrypt.hashSync(password, 10);
-  let newOwner = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  let newOwner = await db.get('SELECT * FROM users WHERE email = ?', [email]);
   let newOwnerId = newOwner ? newOwner.id : null;
 
-  const tx = db.transaction(function () {
-    if (newOwner) {
-      db.prepare("UPDATE users SET password_hash = ?, full_name = ?, role = 'OWNER', status = 'ACTIVE', updated_at = datetime('now') WHERE id = ?")
-        .run(hashPw, fullName, newOwner.id);
-    } else {
-      const mail = db.makeMailAddress(fullName, db.getSetting('mail_domain'));
-      const info = db.prepare(
-        `INSERT INTO users (email, password_hash, full_name, role, status, mail_address)
-         VALUES (?, ?, ?, 'OWNER', 'ACTIVE', ?)`
-      ).run(email, hashPw, fullName, mail);
-      newOwnerId = info.lastInsertRowid;
-    }
-    db.prepare("UPDATE users SET role = 'ADMIN', updated_at = datetime('now') WHERE id = ?")
-      .run(invitation.user_id);
-    db.prepare("UPDATE tokens SET used_at = datetime('now') WHERE id = ?").run(invitation.id);
-  });
-  tx();
+  if (newOwner) {
+    await db.run("UPDATE users SET password_hash = ?, full_name = ?, role = 'OWNER', status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [hashPw, fullName, newOwner.id]);
+  } else {
+    const mail = db.makeMailAddress(fullName, await db.getSetting('mail_domain'));
+    const info = await db.run(
+      `INSERT INTO users (email, password_hash, full_name, role, status, mail_address)
+       VALUES (?, ?, ?, 'OWNER', 'ACTIVE', ?)`,
+      [email, hashPw, fullName, mail]
+    );
+    newOwnerId = info.lastInsertRowid;
+  }
+  
+  await db.run("UPDATE users SET role = 'ADMIN', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [invitation.user_id]);
+  await db.run("UPDATE tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?", [invitation.id]);
 
-  db.logAudit({ id: newOwnerId, full_name: fullName, role: 'OWNER' },
+  await db.logAudit({ id: newOwnerId, full_name: fullName, role: 'OWNER' },
     'ownership.transfer.accepted', 'user', newOwnerId, { previous_owner: invitation.user_id }, req);
   realtime.sendToAdmins({ type: 'ownership:changed' });
   return res.json({ ok: true, message: 'You are now the owner of this portal. Please sign in.' });
-}), handleErrors);
+}));
 
 module.exports = router;

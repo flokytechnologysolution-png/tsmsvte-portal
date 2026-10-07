@@ -1,11 +1,11 @@
 /**
  * db.js — Universal database handler (PostgreSQL for Production, SQLite for Local)
- * COMPLETE VERSION
+ * COMPLETE & FINAL VERSION
  */
 'use strict';
 
 const path = require('path');
-const fs = require('fs');
+const fs = require('');
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 require('dotenv').config();
@@ -115,7 +115,6 @@ async function ensureSchema() {
       CREATE TABLE IF NOT EXISTS sms_send_tokens (id SERIAL PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE, recipients TEXT NOT NULL, recipient_count INTEGER NOT NULL DEFAULT 0, invalid_count INTEGER NOT NULL DEFAULT 0, message TEXT NOT NULL, template_id INTEGER, template_name TEXT NOT NULL DEFAULT '', audience TEXT NOT NULL DEFAULT '', segments INTEGER NOT NULL DEFAULT 1, used_at TIMESTAMP, expires_at TIMESTAMP NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
     `);
   } else {
-    // SQLite Schema (Your original, complete schema)
     sqliteDb.exec(`
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT (datetime('now')));
       CREATE TABLE IF NOT EXISTS lgas (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, sort_order INTEGER NOT NULL DEFAULT 0);
@@ -197,7 +196,7 @@ function makeMailAddress(fullName, domain) {
   let base = last ? first + '.' + last : first;
   base = base.slice(0, 40);
   const host = domain || 'tsmsvte.gov.ng';
-  return base + '@' + host; // Simplified for async safety
+  return base + '@' + host;
 }
 
 async function seedLgas() {
@@ -239,6 +238,102 @@ async function seed() {
 let seededOwner = null;
 seed().then(owner => { seededOwner = owner; }).catch(console.error);
 
+/* ------------------------------------------------------------------ *
+ * Additional Helpers Required by Routes
+ * ------------------------------------------------------------------ */
+async function logAudit(actor, action, entity, entityId, details, req) {
+  try {
+    const sql = IS_PROD 
+      ? `INSERT INTO audit_log (user_id, user_name, role, action, entity, entity_id, details, ip, user_agent) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+      : `INSERT INTO audit_log (user_id, user_name, role, action, entity, entity_id, details, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    await run(sql, [
+      (actor && actor.id) || null,
+      (actor && actor.full_name) || 'system',
+      (actor && actor.role) || 'SYSTEM',
+      action,
+      entity || '',
+      entityId === undefined || entityId === null ? '' : String(entityId),
+      typeof details === 'string' ? details : JSON.stringify(details || {}),
+      (req && (req.ip || '')) || '',
+      (req && req.headers && req.headers['user-agent']) || ''
+    ]);
+  } catch (err) {
+    console.error('[audit] failed:', err.message);
+  }
+}
+
+async function notify(userId, title, body, link) {
+  if (!userId) return null;
+  const sql = IS_PROD
+    ? `INSERT INTO notifications (user_id, title, body, link) VALUES ($1, $2, $3, $4)`
+    : `INSERT INTO notifications (user_id, title, body, link) VALUES (?, ?, ?, ?)`;
+  const info = await run(sql, [userId, title || '', body || '', link || '']);
+  return info.lastInsertRowid;
+}
+
+async function notifyRole(roles, title, body, link) {
+  const list = Array.isArray(roles) ? roles : [roles];
+  const placeholders = list.map((_, i) => IS_PROD ? `$${i + 1}` : '?').join(',');
+  const sql = IS_PROD
+    ? `SELECT id FROM users WHERE role IN (${placeholders}) AND status = 'ACTIVE'`
+    : `SELECT id FROM users WHERE role IN (${placeholders}) AND status = 'ACTIVE'`;
+  const users = await query(sql, list);
+  for (const u of users) {
+    await notify(u.id, title, body, link);
+  }
+}
+
+async function createToken(opts) {
+  const raw = crypto.randomBytes(32).toString('hex');
+  const hash = crypto.createHash('sha256').update(raw).digest('hex');
+  const minutes = opts.ttlMinutes || 60 * 24;
+  const expires = new Date(Date.now() + minutes * 60000).toISOString();
+  const sql = IS_PROD
+    ? `INSERT INTO tokens (user_id, email, purpose, token_hash, meta, expires_at) VALUES ($1, $2, $3, $4, $5, $6)`
+    : `INSERT INTO tokens (user_id, email, purpose, token_hash, meta, expires_at) VALUES (?, ?, ?, ?, ?, ?)`;
+  await run(sql, [
+    opts.userId || null,
+    (opts.email || '').toLowerCase(),
+    opts.purpose,
+    hash,
+    typeof opts.meta === 'string' ? opts.meta : JSON.stringify(opts.meta || {}),
+    expires
+  ]);
+  return { token: raw, expiresAt: expires };
+}
+
+async function consumeToken(rawToken, purpose) {
+  if (!rawToken) return null;
+  const hash = crypto.createHash('sha256').update(String(rawToken)).digest('hex');
+  const sql = IS_PROD
+    ? `SELECT * FROM tokens WHERE token_hash = $1 AND purpose = $2 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP ORDER BY id DESC LIMIT 1`
+    : `SELECT * FROM tokens WHERE token_hash = ? AND purpose = ? AND used_at IS NULL AND datetime(expires_at) > datetime('now') ORDER BY id DESC LIMIT 1`;
+  const row = await get(sql, [hash, purpose]);
+  if (!row) return null;
+  const updateSql = IS_PROD
+    ? `UPDATE tokens SET used_at = CURRENT_TIMESTAMP WHERE id = $1`
+    : `UPDATE tokens SET used_at = datetime('now') WHERE id = ?`;
+  await run(updateSql, [row.id]);
+  return row;
+}
+
+async function getPublicSettings() {
+  const all = await getSettings();
+  const out = {};
+  const PRIVATE_SETTING_KEYS = ['privacy_notice', 'admin_chat_status', 'admin_working_hours'];
+  Object.keys(all).forEach(function (k) {
+    if (PRIVATE_SETTING_KEYS.indexOf(k) !== -1) return;
+    if (k.indexOf('sms_') === 0) return;
+    if (k === 'registration_open' || k === 'public_bot_enabled') { out[k] = all[k]; return; }
+    out[k] = all[k];
+  });
+  return out;
+}
+
+async function getPublicPrivacyNotice() {
+  return await getSetting('privacy_notice', '');
+}
+
 module.exports = {
   db: IS_PROD ? pgPool : sqliteDb,
   DB_FILE: DB_FILE,
@@ -252,6 +347,14 @@ module.exports = {
   getSetting: getSetting,
   setSetting: setSetting,
   getSettings: getSettings,
+  makeMailAddress: makeMailAddress,
+  logAudit: logAudit,
+  notify: notify,
+  notifyRole: notifyRole,
+  createToken: createToken,
+  consumeToken: consumeToken,
+  getPublicSettings: getPublicSettings,
+  getPublicPrivacyNotice: getPublicPrivacyNotice,
   seed: seed,
   seededOwner: seededOwner,
   close: function () {
