@@ -1,7 +1,6 @@
 /**
  * routes/settings.js — branding, content and configuration.
- * NOTHING is hardcoded in the app: every label, colour, contact detail and
- * paragraph is read from the settings table and edited here.
+ * Fully migrated to async/await for Universal PostgreSQL/SQLite support.
  */
 'use strict';
 
@@ -26,27 +25,27 @@ const COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
 const SERVER_CONTROLLED = ['sms_sender_id'];
 
 /* --- Public: everything the pages need to render ---------------------- */
-router.get('/public', function (req, res) {
-  const s = db.getPublicSettings();
+router.get('/public', asyncHandler(async function (req, res) {
+  const s = await db.getPublicSettings();
   res.set('Cache-Control', 'public, max-age=60');
   res.json({ settings: s });
-});
+}));
 
 /* --- Public: the registration privacy notice ---------------------------- *
  * privacy_notice is in PRIVATE_SETTING_KEYS and is therefore never part of
  * /public, but the public registration form is required by the Nigeria Data
  * Protection Act 2023 to show it. This endpoint exists for exactly that
  * reason and returns that one string and nothing else. */
-router.get('/privacy-notice', function (req, res) {
+router.get('/privacy-notice', asyncHandler(async function (req, res) {
   res.set('Cache-Control', 'public, max-age=300');
-  res.json({ privacy_notice: db.getPublicPrivacyNotice() });
-});
+  res.json({ privacy_notice: await db.getPublicPrivacyNotice() });
+}));
 
 /* --- Authenticated: full settings (admins/editors see placeholders) --- */
-router.get('/', requireAuth, function (req, res) {
+router.get('/', requireAuth, asyncHandler(async function (req, res) {
   const smsLib = require('../lib/sms');
   res.json({
-    settings: db.getSettings(),
+    settings: await db.getSettings(),
     editable_keys: EDITABLE_KEYS,
     mail: require('../lib/mailer').mailStatus(),
     sms: smsLib.providerStatus(),
@@ -62,10 +61,10 @@ router.get('/', requireAuth, function (req, res) {
     },
     ai: require('../lib/ai').status()
   });
-});
+}));
 
 /* --- Admin: update --------------------------------------------------- */
-router.put('/', requireRole('ADMIN'), writeLimiter, function (req, res, next) {
+router.put('/', requireRole('ADMIN'), writeLimiter, asyncHandler(async function (req, res, next) {
   const body = req.body || {};
   const updates = {};
   const rejected = [];
@@ -88,21 +87,21 @@ router.put('/', requireRole('ADMIN'), writeLimiter, function (req, res, next) {
     return res.status(422).json({ error: 'No valid settings were sent.' });
   }
 
-  db.setSettings(updates);
-  db.logAudit(req.user, 'settings.update', 'settings', '', Object.keys(updates), req);
+  await db.setSettings(updates);
+  await db.logAudit(req.user, 'settings.update', 'settings', '', Object.keys(updates), req);
   return res.json({ ok: true, updated: Object.keys(updates), rejected: rejected });
-});
+}));
 
 /* --- Admin: branding upload (logo / governor photo / hero image) ----- */
 router.post('/upload', requireRole('ADMIN'), images.single('file'), asyncHandler(async function (req, res) {
   if (!req.file) return res.status(400).json({ error: 'No image was uploaded.' });
   const url = relPath(req.file.path);
-  db.logAudit(req.user, 'settings.upload', 'settings', '', req.file.filename, req);
+  await db.logAudit(req.user, 'settings.upload', 'settings', '', req.file.filename, req);
   return res.json({ ok: true, url: url, filename: req.file.filename });
-}), handleErrors);
+}));
 
 /* --- Admin: mail/SMS/AI integration status (never returns secrets) --- */
-router.get('/integrations', requireRole('ADMIN'), function (req, res) {
+router.get('/integrations', requireRole('ADMIN'), asyncHandler(async function (req, res) {
   const mail = require('../lib/mailer');
   const sms = require('../lib/sms');
   const ai = require('../lib/ai');
@@ -112,6 +111,6 @@ router.get('/integrations', requireRole('ADMIN'), function (req, res) {
     ai: ai.status(),
     sockets: require('../lib/realtime').stats()
   });
-});
+}));
 
 module.exports = router;

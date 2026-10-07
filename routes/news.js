@@ -1,6 +1,6 @@
 /**
  * routes/news.js — ministry news: list, detail, categories and admin CRUD.
- * Drafts are only visible to signed-in EDITOR/ADMIN/OWNER accounts.
+ * Fully migrated to async/await for Universal PostgreSQL/SQLite support.
  */
 'use strict';
 
@@ -32,26 +32,26 @@ function postFrom(row, withBody) {
   return out;
 }
 
-function uniqueSlug(title, ignoreId) {
+async function uniqueSlug(title, ignoreId) {
   const base = db.slugify(title) || 'news';
   let slug = base;
   let n = 1;
   for (;;) {
-    const row = db.prepare('SELECT id FROM news WHERE slug = ?').get(slug);
+    const row = await db.get('SELECT id FROM news WHERE slug = ?', [slug]);
     if (!row || (ignoreId && row.id === ignoreId)) return slug;
     n += 1;
     slug = base + '-' + n;
   }
 }
 
-router.get('/categories', function (req, res) {
-  const rows = db.prepare(
+router.get('/categories', asyncHandler(async function (req, res) {
+  const rows = await db.query(
     "SELECT category, COUNT(*) AS n FROM news WHERE status = 'published' GROUP BY category ORDER BY n DESC"
-  ).all();
+  );
   res.json({ categories: rows.map(function (r) { return r.category; }) });
-});
+}));
 
-router.get('/', function (req, res) {
+router.get('/', asyncHandler(async function (req, res) {
   const viewer = req.user;
   const showAll = isAdminish(viewer) || (viewer && viewer.role === 'EDITOR');
   const status = clean(req.query.status || '');
@@ -71,11 +71,14 @@ router.get('/', function (req, res) {
   if (q) { where.push('(title LIKE ? OR summary LIKE ?)'); params.push('%' + q + '%', '%' + q + '%'); }
   const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
 
-  const total = db.prepare('SELECT COUNT(*) AS n FROM news' + whereSql).get(...params).n;
-  const rows = db.prepare(
+  const totalRow = await db.get('SELECT COUNT(*) AS n FROM news' + whereSql, params);
+  const total = totalRow ? totalRow.n : 0;
+  
+  const rows = await db.query(
     'SELECT * FROM news' + whereSql +
-    ' ORDER BY COALESCE(published_at, created_at) DESC, id DESC LIMIT ? OFFSET ?'
-  ).all(...params, limit, (page - 1) * limit);
+    ' ORDER BY COALESCE(published_at, created_at) DESC, id DESC LIMIT ? OFFSET ?',
+    [...params, limit, (page - 1) * limit]
+  );
 
   res.json({
     news: rows.map(function (r) { return postFrom(r, false); }),
@@ -83,14 +86,14 @@ router.get('/', function (req, res) {
     page: page,
     pages: Math.max(1, Math.ceil(total / limit))
   });
-});
+}));
 
-router.get('/:idOrSlug', function (req, res) {
+router.get('/:idOrSlug', asyncHandler(async function (req, res) {
   const key = String(req.params.idOrSlug).slice(0, 200);
   const id = toIntOrNull(key);
   const row = id
-    ? db.prepare('SELECT * FROM news WHERE id = ?').get(id)
-    : db.prepare('SELECT * FROM news WHERE slug = ?').get(key);
+    ? await db.get('SELECT * FROM news WHERE id = ?', [id])
+    : await db.get('SELECT * FROM news WHERE slug = ?', [key]);
   if (!row) return res.status(404).json({ error: 'News item not found' });
 
   const viewer = req.user;
@@ -99,7 +102,7 @@ router.get('/:idOrSlug', function (req, res) {
     return res.status(404).json({ error: 'News item not found' });
   }
   return res.json({ article: postFrom(row, true) });
-});
+}));
 
 /* ------------------------------- write -------------------------------- */
 
@@ -133,20 +136,23 @@ router.post('/', requireRole('EDITOR'), writeLimiter, images.single('cover'),
     const v = parsed.value;
     if (req.file) v.cover_image = relPath(req.file.path);
 
-    const info = db.prepare(
-      `INSERT INTO news (title, slug, summary, body, category, cover_image, status, author_id, published_at)
-       VALUES (@title, @slug, @summary, @body, @category, @cover_image, @status, @author_id,
-               CASE WHEN @status = 'published' THEN datetime('now') ELSE NULL END)`
-    ).run(Object.assign({}, v, { slug: uniqueSlug(v.title, null), author_id: req.user.id }));
+    const slug = await uniqueSlug(v.title, null);
+    const publishedAt = v.status === 'published' ? new Date().toISOString() : null;
 
-    db.logAudit(req.user, 'news.create', 'news', info.lastInsertRowid, { title: v.title, status: v.status }, req);
+    const info = await db.run(
+      `INSERT INTO news (title, slug, summary, body, category, cover_image, status, author_id, published_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [v.title, slug, v.summary, v.body, v.category, v.cover_image, v.status, req.user.id, publishedAt]
+    );
+
+    await db.logAudit(req.user, 'news.create', 'news', info.lastInsertRowid, { title: v.title, status: v.status }, req);
     return res.status(201).json({ ok: true, id: info.lastInsertRowid });
-  }), handleErrors);
+  }));
 
 router.put('/:id([0-9]+)', requireRole('EDITOR'), writeLimiter, images.single('cover'),
   asyncHandler(async function (req, res) {
     const id = toIntOrNull(req.params.id);
-    const existing = id ? db.prepare('SELECT * FROM news WHERE id = ?').get(id) : null;
+    const existing = id ? await db.get('SELECT * FROM news WHERE id = ?', [id]) : null;
     if (!existing) return res.status(404).json({ error: 'News item not found' });
 
     const parsed = readPost(Object.assign({}, existing, req.body || {}));
@@ -154,27 +160,37 @@ router.put('/:id([0-9]+)', requireRole('EDITOR'), writeLimiter, images.single('c
     const v = parsed.value;
     if (req.file) v.cover_image = relPath(req.file.path);
 
-    db.prepare(
-      `UPDATE news SET title=@title, slug=@slug, summary=@summary, body=@body, category=@category,
-        cover_image=@cover_image, status=@status, updated_at=datetime('now'),
-        published_at = CASE
-          WHEN @status = 'published' AND published_at IS NULL THEN datetime('now')
-          WHEN @status = 'draft' THEN NULL
-          ELSE published_at END
-       WHERE id=@id`
-    ).run(Object.assign({}, v, { slug: uniqueSlug(v.title, id), id: id }));
+    const slug = await uniqueSlug(v.title, id);
+    
+    // Handle published_at logic:
+    // - If publishing for the first time (status=published AND was null), set to now
+    // - If reverting to draft, set to null
+    // - Otherwise keep existing value
+    let publishedAt = existing.published_at;
+    if (v.status === 'published' && !existing.published_at) {
+      publishedAt = new Date().toISOString();
+    } else if (v.status === 'draft') {
+      publishedAt = null;
+    }
 
-    db.logAudit(req.user, 'news.update', 'news', id, { title: v.title, status: v.status }, req);
+    await db.run(
+      `UPDATE news SET title=?, slug=?, summary=?, body=?, category=?,
+        cover_image=?, status=?, updated_at=CURRENT_TIMESTAMP, published_at=?
+       WHERE id=?`,
+      [v.title, slug, v.summary, v.body, v.category, v.cover_image, v.status, publishedAt, id]
+    );
+
+    await db.logAudit(req.user, 'news.update', 'news', id, { title: v.title, status: v.status }, req);
     return res.json({ ok: true });
-  }), handleErrors);
+  }));
 
-router.delete('/:id([0-9]+)', requireRole('EDITOR'), writeLimiter, function (req, res) {
+router.delete('/:id([0-9]+)', requireRole('EDITOR'), writeLimiter, asyncHandler(async function (req, res) {
   const id = toIntOrNull(req.params.id);
-  const row = id ? db.prepare('SELECT * FROM news WHERE id = ?').get(id) : null;
+  const row = id ? await db.get('SELECT * FROM news WHERE id = ?', [id]) : null;
   if (!row) return res.status(404).json({ error: 'News item not found' });
-  db.prepare('DELETE FROM news WHERE id = ?').run(id);
-  db.logAudit(req.user, 'news.delete', 'news', id, { title: row.title }, req);
+  await db.run('DELETE FROM news WHERE id = ?', [id]);
+  await db.logAudit(req.user, 'news.delete', 'news', id, { title: row.title }, req);
   return res.json({ ok: true });
-});
+}));
 
 module.exports = router;

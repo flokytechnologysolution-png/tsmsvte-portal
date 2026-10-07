@@ -1,13 +1,12 @@
 /**
  * routes/events.js — ministry events (administrators and editors).
- *
- * Modelled on routes/news.js: a public list that only shows published events,
- * plus a full CRUD behind requireRole('EDITOR').  An "upcoming" event is one
- * whose date has not passed; past events stay reachable with ?past=1.
+ * Fully migrated to async/await for Universal PostgreSQL/SQLite support.
  */
 'use strict';
 
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const db = require('../db');
 const { requireRole } = require('../middleware/auth');
 const { images, relPath } = require('../middleware/upload');
@@ -57,9 +56,7 @@ function readEvent(body) {
 
 /* ------------------------------- public ------------------------------- */
 
-/* ?past=1 lists events that have already happened; ?all=1 is for staff who
- * may edit content, so they can see drafts and past entries. */
-router.get('/', function (req, res) {
+router.get('/', asyncHandler(async function (req, res) {
   const showPast = String(req.query.past || '') === '1';
   const canSeeAll = req.user && ['OWNER', 'ADMIN', 'EDITOR'].indexOf(req.user.role) !== -1;
   const showAll = canSeeAll && String(req.query.all || '') === '1';
@@ -67,10 +64,8 @@ router.get('/', function (req, res) {
   const where = [];
   const params = [];
   if (!showAll) where.push("status = 'published'");
-  /* ?all=1 is the staff view (Admin -> Events): drafts AND past AND upcoming,
-   * so the date filter is skipped entirely for them. */
   if (!showAll) {
-    where.push(showPast ? "event_date < date('now')" : "event_date >= date('now')");
+    where.push(showPast ? "event_date < CURRENT_DATE" : "event_date >= CURRENT_DATE");
   }
 
   const q = clean(req.query.q || '').slice(0, 80);
@@ -79,25 +74,26 @@ router.get('/', function (req, res) {
     params.push('%' + q + '%', '%' + q + '%', '%' + q + '%');
   }
 
-  const rows = db.prepare(
-    'SELECT * FROM events' + (where.length ? ' WHERE ' + where.join(' AND ') : '') +
-    ' ORDER BY event_date ASC, id ASC LIMIT 100'
-  ).all(...params);
+  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  const rows = await db.query(
+    'SELECT * FROM events' + whereSql + ' ORDER BY event_date ASC, id ASC LIMIT 100',
+    params
+  );
 
   res.set('Cache-Control', 'public, max-age=60');
   res.json({ events: rows.map(function (r) { return eventFrom(r); }), total: rows.length });
-});
+}));
 
-router.get('/:id([0-9]+)', function (req, res) {
+router.get('/:id([0-9]+)', asyncHandler(async function (req, res) {
   const id = toIntOrNull(req.params.id);
-  const row = id ? db.prepare('SELECT * FROM events WHERE id = ?').get(id) : null;
+  const row = id ? await db.get('SELECT * FROM events WHERE id = ?', [id]) : null;
   if (!row) return res.status(404).json({ error: 'Event not found' });
   const canSeeDrafts = req.user && ['OWNER', 'ADMIN', 'EDITOR'].indexOf(req.user.role) !== -1;
   if (row.status !== 'published' && !canSeeDrafts) {
     return res.status(404).json({ error: 'Event not found' });
   }
   return res.json({ event: eventFrom(row) });
-});
+}));
 
 /* -------------------------------- write ------------------------------- */
 
@@ -108,19 +104,20 @@ router.post('/', requireRole('EDITOR'), writeLimiter, images.single('image'),
     const v = parsed.value;
     if (req.file) v.image = relPath(req.file.path);
 
-    const info = db.prepare(
+    const info = await db.run(
       `INSERT INTO events (title, description, event_date, location, image, status)
-       VALUES (@title, @description, @event_date, @location, @image, @status)`
-    ).run(v);
-    db.logAudit(req.user, 'event.create', 'event', info.lastInsertRowid,
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [v.title, v.description, v.event_date, v.location, v.image, v.status]
+    );
+    await db.logAudit(req.user, 'event.create', 'event', info.lastInsertRowid,
       { title: v.title, event_date: v.event_date }, req);
     return res.status(201).json({ ok: true, id: info.lastInsertRowid });
-  }), handleErrors);
+  }));
 
 router.put('/:id([0-9]+)', requireRole('EDITOR'), writeLimiter, images.single('image'),
   asyncHandler(async function (req, res) {
     const id = toIntOrNull(req.params.id);
-    const existing = id ? db.prepare('SELECT * FROM events WHERE id = ?').get(id) : null;
+    const existing = id ? await db.get('SELECT * FROM events WHERE id = ?', [id]) : null;
     if (!existing) return res.status(404).json({ error: 'Event not found' });
 
     const parsed = readEvent(Object.assign({}, existing, req.body || {}));
@@ -128,26 +125,30 @@ router.put('/:id([0-9]+)', requireRole('EDITOR'), writeLimiter, images.single('i
     const v = parsed.value;
     if (req.file) v.image = relPath(req.file.path);
 
-    db.prepare(
-      `UPDATE events SET title=@title, description=@description, event_date=@event_date,
-         location=@location, image=@image, status=@status, updated_at=datetime('now')
-       WHERE id=@id`
-    ).run(Object.assign({}, v, { id: id }));
-    db.logAudit(req.user, 'event.update', 'event', id, { title: v.title }, req);
+    await db.run(
+      `UPDATE events SET title=?, description=?, event_date=?,
+         location=?, image=?, status=?, updated_at=CURRENT_TIMESTAMP
+       WHERE id=?`,
+      [v.title, v.description, v.event_date, v.location, v.image, v.status, id]
+    );
+    await db.logAudit(req.user, 'event.update', 'event', id, { title: v.title }, req);
     return res.json({ ok: true });
-  }), handleErrors);
+  }));
 
-router.delete('/:id([0-9]+)', requireRole('EDITOR'), writeLimiter, function (req, res) {
+router.delete('/:id([0-9]+)', requireRole('EDITOR'), writeLimiter, asyncHandler(async function (req, res) {
   const id = toIntOrNull(req.params.id);
-  const row = id ? db.prepare('SELECT * FROM events WHERE id = ?').get(id) : null;
+  const row = id ? await db.get('SELECT * FROM events WHERE id = ?', [id]) : null;
   if (!row) return res.status(404).json({ error: 'Event not found' });
-  db.prepare('DELETE FROM events WHERE id = ?').run(id);
+  
+  await db.run('DELETE FROM events WHERE id = ?', [id]);
+  
   if (row.image) {
-    const abs = require('path').resolve(__dirname, '..', row.image.replace(/^\//, ''));
-    require('fs').rm(abs, { force: true }, function () { /* best effort */ });
+    const abs = path.resolve(__dirname, '..', row.image.replace(/^\//, ''));
+    fs.rm(abs, { force: true }, function () { /* best effort */ });
   }
-  db.logAudit(req.user, 'event.delete', 'event', id, { title: row.title }, req);
+  
+  await db.logAudit(req.user, 'event.delete', 'event', id, { title: row.title }, req);
   return res.json({ ok: true });
-});
+}));
 
 module.exports = router;

@@ -1,6 +1,6 @@
 /**
  * routes/circulars.js — public circulars, forms and downloads (PDF).
- * Files are stored in uploads/circulars with random names.
+ * Fully migrated to async/await for Universal PostgreSQL/SQLite support.
  */
 'use strict';
 
@@ -33,7 +33,7 @@ function circularFrom(row) {
 }
 const CIRCULAR_COLUMNS = 'id, title, description, category, file_path, file_name, file_size, status, created_at';
 
-router.get('/', function (req, res) {
+router.get('/', asyncHandler(async function (req, res) {
   const category = clean(req.query.category || '').slice(0, 60);
   const q = clean(req.query.q || '').slice(0, 80);
   const includeAll = req.user && ['OWNER', 'ADMIN', 'EDITOR'].indexOf(req.user.role) !== -1
@@ -46,25 +46,23 @@ router.get('/', function (req, res) {
   if (q) { where.push('(title LIKE ? OR description LIKE ?)'); params.push('%' + q + '%', '%' + q + '%'); }
   const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
 
-  const rows = db.prepare('SELECT ' + CIRCULAR_COLUMNS + ' FROM circulars' + whereSql +
-    ' ORDER BY created_at DESC, id DESC').all(...params);
-  const categories = db.prepare("SELECT DISTINCT category FROM circulars WHERE status='published' ORDER BY category")
-    .all().map(function (r) { return r.category; });
+  const rows = await db.query('SELECT ' + CIRCULAR_COLUMNS + ' FROM circulars' + whereSql +
+    ' ORDER BY created_at DESC, id DESC', params);
+  const catRows = await db.query("SELECT DISTINCT category FROM circulars WHERE status='published' ORDER BY category");
+  const categories = catRows.map(function (r) { return r.category; });
   res.json({ circulars: rows, categories: categories, total: rows.length });
-});
+}));
 
-/* Single circular. Published ones are public; a draft is visible only to
- * staff who may already edit content. */
-router.get('/:id([0-9]+)', function (req, res) {
+router.get('/:id([0-9]+)', asyncHandler(async function (req, res) {
   const id = toIntOrNull(req.params.id);
-  const row = id ? db.prepare('SELECT ' + CIRCULAR_COLUMNS + ' FROM circulars WHERE id = ?').get(id) : null;
+  const row = id ? await db.get('SELECT ' + CIRCULAR_COLUMNS + ' FROM circulars WHERE id = ?', [id]) : null;
   if (!row) return res.status(404).json({ error: 'Document not found' });
   const maySeeDrafts = req.user && ['OWNER', 'ADMIN', 'EDITOR'].indexOf(req.user.role) !== -1;
   if (row.status !== 'published' && !maySeeDrafts) {
     return res.status(404).json({ error: 'Document not found' });
   }
   return res.json({ circular: circularFrom(row) });
-});
+}));
 
 router.post('/', requireRole('ADMIN'), writeLimiter, documents.single('file'),
   asyncHandler(async function (req, res) {
@@ -72,27 +70,28 @@ router.post('/', requireRole('ADMIN'), writeLimiter, documents.single('file'),
     const title = clean(req.body.title).slice(0, 200);
     if (!title) return res.status(422).json({ error: 'A title is required.' });
 
-    const info = db.prepare(
+    const info = await db.run(
       `INSERT INTO circulars (title, description, category, file_path, file_name, file_size, status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      title,
-      clean(req.body.description).slice(0, 1000),
-      clean(req.body.category || 'Circular').slice(0, 60) || 'Circular',
-      relPath(req.file.path),
-      path.basename(req.file.filename),
-      req.file.size,
-      req.body.status === 'draft' ? 'draft' : 'published',
-      req.user.id
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        title,
+        clean(req.body.description).slice(0, 1000),
+        clean(req.body.category || 'Circular').slice(0, 60) || 'Circular',
+        relPath(req.file.path),
+        path.basename(req.file.filename),
+        req.file.size,
+        req.body.status === 'draft' ? 'draft' : 'published',
+        req.user.id
+      ]
     );
-    db.logAudit(req.user, 'circular.create', 'circular', info.lastInsertRowid, { title: title }, req);
+    await db.logAudit(req.user, 'circular.create', 'circular', info.lastInsertRowid, { title: title }, req);
     return res.status(201).json({ ok: true, id: info.lastInsertRowid });
-  }), handleErrors);
+  }));
 
 router.put('/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, documents.single('file'),
   asyncHandler(async function (req, res) {
     const id = toIntOrNull(req.params.id);
-    const existing = id ? db.prepare('SELECT * FROM circulars WHERE id = ?').get(id) : null;
+    const existing = id ? await db.get('SELECT * FROM circulars WHERE id = ?', [id]) : null;
     if (!existing) return res.status(404).json({ error: 'Document not found' });
 
     const title = clean(req.body.title || existing.title).slice(0, 200);
@@ -112,30 +111,31 @@ router.put('/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, documents.single(
       patch.file_size = req.file.size;
     }
 
-    db.prepare(
-      `UPDATE circulars SET title=@title, description=@description, category=@category,
-        file_path=@file_path, file_name=@file_name, file_size=@file_size, status=@status WHERE id=@id`
-    ).run(patch);
+    await db.run(
+      `UPDATE circulars SET title=?, description=?, category=?,
+        file_path=?, file_name=?, file_size=?, status=? WHERE id=?`,
+      [patch.title, patch.description, patch.category, patch.file_path, patch.file_name, patch.file_size, patch.status, patch.id]
+    );
 
     if (req.file && existing.file_path && existing.file_path !== patch.file_path) {
       const oldAbs = path.resolve(__dirname, '..', existing.file_path.replace(/^\//, ''));
       fs.rm(oldAbs, { force: true }, function () { /* best effort */ });
     }
-    db.logAudit(req.user, 'circular.update', 'circular', id, { title: title }, req);
+    await db.logAudit(req.user, 'circular.update', 'circular', id, { title: title }, req);
     return res.json({ ok: true });
-  }), handleErrors);
+  }));
 
-router.delete('/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, function (req, res) {
+router.delete('/:id([0-9]+)', requireRole('ADMIN'), writeLimiter, asyncHandler(async function (req, res) {
   const id = toIntOrNull(req.params.id);
-  const row = id ? db.prepare('SELECT * FROM circulars WHERE id = ?').get(id) : null;
+  const row = id ? await db.get('SELECT * FROM circulars WHERE id = ?', [id]) : null;
   if (!row) return res.status(404).json({ error: 'Document not found' });
-  db.prepare('DELETE FROM circulars WHERE id = ?').run(id);
+  await db.run('DELETE FROM circulars WHERE id = ?', [id]);
   if (row.file_path) {
     const abs = path.resolve(__dirname, '..', row.file_path.replace(/^\//, ''));
     fs.rm(abs, { force: true }, function () { /* best effort */ });
   }
-  db.logAudit(req.user, 'circular.delete', 'circular', id, { title: row.title }, req);
+  await db.logAudit(req.user, 'circular.delete', 'circular', id, { title: row.title }, req);
   return res.json({ ok: true });
-});
+}));
 
 module.exports = router;

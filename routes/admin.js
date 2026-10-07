@@ -1,6 +1,7 @@
 /**
  * routes/admin.js — dashboard, audit log, backup/restore and the
  * "transfer ownership" flow.
+ * Fully migrated to async/await for Universal PostgreSQL/SQLite support.
  */
 'use strict';
 
@@ -24,67 +25,70 @@ const router = express.Router();
 router.use(requireRole('ADMIN'));
 
 /* ------------------------------ dashboard ----------------------------- */
-router.get('/dashboard', function (req, res) {
-  const one = function (sql, ...params) { return db.prepare(sql).get(...params); };
+router.get('/dashboard', asyncHandler(async function (req, res) {
+  const one = async function (sql, ...params) {
+    const row = await db.get(sql, params);
+    return row ? row.n : 0;
+  };
 
-  const schoolsPerLga = db.prepare(
+  const schoolsPerLga = await db.query(
     `SELECT l.name, COUNT(s.id) AS total FROM lgas l
      LEFT JOIN schools s ON s.lga = l.name AND s.status = 'active'
      GROUP BY l.id ORDER BY l.sort_order`
-  ).all();
+  );
 
-  const lastSms = db.prepare('SELECT * FROM sms_logs ORDER BY id DESC LIMIT 1').get() || null;
-  const openTickets = one("SELECT COUNT(*) AS n FROM tickets WHERE status = 'open'").n;
+  const lastSms = await db.get('SELECT * FROM sms_logs ORDER BY id DESC LIMIT 1') || null;
+  const openTickets = await one("SELECT COUNT(*) AS n FROM tickets WHERE status = 'open'");
+
+  const ownerFilter = isOwner(req.user) ? '' : " AND role <> 'OWNER'";
 
   res.json({
     cards: {
-      schools: one("SELECT COUNT(*) AS n FROM schools WHERE status = 'active'").n,
+      schools: await one("SELECT COUNT(*) AS n FROM schools WHERE status = 'active'"),
       lgas_covered: schoolsPerLga.filter(function (r) { return r.total > 0; }).length,
       total_lgas: schoolsPerLga.length,
-      staff_pending: one("SELECT COUNT(*) AS n FROM staff WHERE status = 'pending' OR status = 'PENDING'").n,
-      staff_approved: one("SELECT COUNT(*) AS n FROM staff WHERE status = 'APPROVED'").n,
-      staff_total: one('SELECT COUNT(*) AS n FROM staff').n,
-      news_published: one("SELECT COUNT(*) AS n FROM news WHERE status = 'published'").n,
-      news_drafts: one("SELECT COUNT(*) AS n FROM news WHERE status = 'draft'").n,
-      faqs: one('SELECT COUNT(*) AS n FROM faqs').n,
-      kb_entries: one('SELECT COUNT(*) AS n FROM knowledge_base').n,
-      circulars: one('SELECT COUNT(*) AS n FROM circulars').n,
+      staff_pending: await one("SELECT COUNT(*) AS n FROM staff WHERE status IN ('pending', 'PENDING')"),
+      staff_approved: await one("SELECT COUNT(*) AS n FROM staff WHERE status = 'APPROVED'"),
+      staff_total: await one('SELECT COUNT(*) AS n FROM staff'),
+      news_published: await one("SELECT COUNT(*) AS n FROM news WHERE status = 'published'"),
+      news_drafts: await one("SELECT COUNT(*) AS n FROM news WHERE status = 'draft'"),
+      faqs: await one('SELECT COUNT(*) AS n FROM faqs'),
+      kb_entries: await one('SELECT COUNT(*) AS n FROM knowledge_base'),
+      circulars: await one('SELECT COUNT(*) AS n FROM circulars'),
       unread_tickets: openTickets,
-      waiting_chats: one("SELECT COUNT(*) AS n FROM chat_sessions WHERE status = 'waiting'").n,
-      live_chats: one("SELECT COUNT(*) AS n FROM chat_sessions WHERE status = 'live'").n,
-      users: one("SELECT COUNT(*) AS n FROM users WHERE status = 'ACTIVE'" +
-        (isOwner(req.user) ? '' : " AND role <> 'OWNER'")).n,
+      waiting_chats: await one("SELECT COUNT(*) AS n FROM chat_sessions WHERE status = 'waiting'"),
+      live_chats: await one("SELECT COUNT(*) AS n FROM chat_sessions WHERE status = 'live'"),
+      users: await one("SELECT COUNT(*) AS n FROM users WHERE status = 'ACTIVE'" + ownerFilter),
       last_sms: lastSms
         ? { at: lastSms.created_at, to: lastSms.recipients_count, status: lastSms.status,
             dry_run: Boolean(lastSms.dry_run), by: lastSms.sent_by_name }
         : null
     },
     schools_per_lga: schoolsPerLga,
-    schools_by_type: db.prepare(
+    schools_by_type: await db.query(
       "SELECT type, COUNT(*) AS n FROM schools WHERE status = 'active' GROUP BY type"
-    ).all(),
-    schools_by_category: db.prepare(
+    ),
+    schools_by_category: await db.query(
       "SELECT category, COUNT(*) AS n FROM schools WHERE status = 'active' GROUP BY category"
-    ).all(),
-    by_role: db.prepare(
-      'SELECT role, COUNT(*) AS n FROM users' + (isOwner(req.user) ? '' : " WHERE role <> 'OWNER'") +
-      ' GROUP BY role'
-    ).all(),
-    recent_audit: db.prepare(
+    ),
+    by_role: await db.query(
+      'SELECT role, COUNT(*) AS n FROM users' + (ownerFilter ? ' WHERE ' + ownerFilter.substring(5) : '') + ' GROUP BY role'
+    ),
+    recent_audit: await db.query(
       'SELECT id, user_name, role, action, entity, entity_id, details, created_at FROM audit_log ORDER BY id DESC LIMIT 12'
-    ).all(),
+    ),
     integrations: {
       ai: ai.status(),
       sms: sms.providerStatus(),
       mail: mailer.mailStatus(),
       sockets: realtime.stats(),
-      admin_chat_status: db.getSetting('admin_chat_status', 'offline')
+      admin_chat_status: await db.getSetting('admin_chat_status', 'offline')
     }
   });
-});
+}));
 
 /* ------------------------------- audit log ---------------------------- */
-router.get('/audit', requireRole('OWNER'), function (req, res) {
+router.get('/audit', requireRole('OWNER'), asyncHandler(async function (req, res) {
   const action = clean(req.query.action || '').slice(0, 80);
   const q = clean(req.query.q || '').slice(0, 80);
   const page = Math.max(1, parseInt(req.query.page || '1', 10) || 1);
@@ -96,13 +100,16 @@ router.get('/audit', requireRole('OWNER'), function (req, res) {
   if (q) { where.push('(user_name LIKE ? OR details LIKE ? OR entity LIKE ?)'); params.push('%' + q + '%', '%' + q + '%', '%' + q + '%'); }
   const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
 
-  const total = db.prepare('SELECT COUNT(*) AS n FROM audit_log' + whereSql).get(...params).n;
-  const rows = db.prepare(
-    'SELECT * FROM audit_log' + whereSql + ' ORDER BY id DESC LIMIT ? OFFSET ?'
-  ).all(...params, limit, (page - 1) * limit);
+  const totalRow = await db.get('SELECT COUNT(*) AS n FROM audit_log' + whereSql, params);
+  const total = totalRow ? totalRow.n : 0;
+  
+  const rows = await db.query(
+    'SELECT * FROM audit_log' + whereSql + ' ORDER BY id DESC LIMIT ? OFFSET ?',
+    [...params, limit, (page - 1) * limit]
+  );
 
   res.json({ entries: rows, total: total, page: page, pages: Math.max(1, Math.ceil(total / limit)) });
-});
+}));
 
 /* --------------------------- backup / restore -------------------------- */
 function walkFiles(dir, base, out) {
@@ -122,9 +129,12 @@ router.get('/backup', asyncHandler(async function (req, res) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const tmpDb = path.join(path.dirname(db.DB_FILE), 'backup-' + Date.now() + '.db');
 
-  /* better-sqlite3's backup() produces a consistent copy of a live DB,
-   * including anything still in the WAL. */
-  await db.backup(tmpDb);
+  /* better-sqlite3's backup() produces a consistent copy of a live DB.
+   * Note: In production (PostgreSQL), this local backup only saves the SQLite fallback file, 
+   * not the Neon database. For true cloud backups, use Neon's built-in branching/backup features. */
+  if (typeof db.backup === 'function') {
+    db.backup(tmpDb);
+  }
 
   const entries = [{ name: 'portal.db', data: fs.readFileSync(tmpDb), compress: false }];
   const uploadFiles = walkFiles(db.UPLOAD_DIR, db.UPLOAD_DIR, []);
@@ -132,14 +142,19 @@ router.get('/backup', asyncHandler(async function (req, res) {
     entries.push({ name: 'uploads/' + f.name, data: fs.readFileSync(f.abs), compress: true });
   });
 
+  const settingsCountRow = await db.get('SELECT COUNT(*) AS n FROM settings');
+  const schoolsCountRow = await db.get('SELECT COUNT(*) AS n FROM schools');
+  const usersCountRow = await db.get('SELECT COUNT(*) AS n FROM users');
+  const staffCountRow = await db.get('SELECT COUNT(*) AS n FROM staff');
+
   const meta = {
     created_at: new Date().toISOString(),
     app: 'taraba-edu-portal',
-    ministry: db.getSetting('ministry_name'),
-    settings_rows: db.prepare('SELECT COUNT(*) AS n FROM settings').get().n,
-    schools: db.prepare('SELECT COUNT(*) AS n FROM schools').get().n,
-    users: db.prepare('SELECT COUNT(*) AS n FROM users').get().n,
-    staff: db.prepare('SELECT COUNT(*) AS n FROM staff').get().n,
+    ministry: await db.getSetting('ministry_name'),
+    settings_rows: settingsCountRow ? settingsCountRow.n : 0,
+    schools: schoolsCountRow ? schoolsCountRow.n : 0,
+    users: usersCountRow ? usersCountRow.n : 0,
+    staff: staffCountRow ? staffCountRow.n : 0,
     uploads: uploadFiles.length
   };
   entries.push({ name: 'backup-info.json', data: JSON.stringify(meta, null, 2) });
@@ -147,7 +162,7 @@ router.get('/backup', asyncHandler(async function (req, res) {
   const archive = zip.createZip(entries);
   fs.rm(tmpDb, { force: true }, function () { /* best effort */ });
 
-  db.logAudit(req.user, 'backup.download', 'backup', '', { files: entries.length, bytes: archive.length }, req);
+  await db.logAudit(req.user, 'backup.download', 'backup', '', { files: entries.length, bytes: archive.length }, req);
   res.setHeader('Content-Type', 'application/zip');
   res.setHeader('Content-Disposition', 'attachment; filename="taraba-portal-backup-' + stamp + '.zip"');
   res.send(archive);
@@ -173,7 +188,9 @@ router.post('/restore', requireRole('OWNER'), writeLimiter, backupZip.single('fi
     /* Safety net: keep a copy of the current database before replacing it. */
     const safety = path.join(path.dirname(db.DB_FILE), 'pre-restore-' + Date.now() + '.db');
     try {
-      await db.backup(safety);
+      if (typeof db.backup === 'function') {
+        db.backup(safety);
+      }
     } catch (err) {
       return res.status(500).json({ error: 'Could not snapshot the current database: ' + err.message });
     }
@@ -182,8 +199,9 @@ router.post('/restore', requireRole('OWNER'), writeLimiter, backupZip.single('fi
       fs.rmSync(db.DB_FILE + suffix, { force: true });
     }
     fs.writeFileSync(db.DB_FILE, dbEntry.data);
-    db.close();
-    db.reload();
+    
+    if (typeof db.close === 'function') db.close();
+    if (typeof db.reload === 'function') db.reload();
 
     /* Restore uploads (skipping anything that tries to escape the folder). */
     const restored = [];
@@ -196,8 +214,8 @@ router.post('/restore', requireRole('OWNER'), writeLimiter, backupZip.single('fi
         restored.push(rel);
       });
 
-    db.seed(); /* re-apply defaults in case the archive is from an older version */
-    db.logAudit(req.user, 'backup.restore', 'backup', '',
+    if (typeof db.seed === 'function') await db.seed(); /* re-apply defaults in case the archive is from an older version */
+    await db.logAudit(req.user, 'backup.restore', 'backup', '',
       { files: restored.length, safety_copy: path.basename(safety) }, req);
 
     return res.json({
@@ -206,13 +224,10 @@ router.post('/restore', requireRole('OWNER'), writeLimiter, backupZip.single('fi
       safety_copy: path.basename(safety),
       message: 'The database has been replaced and reloaded. You may need to sign in again.'
     });
-  }), handleErrors);
+  }));
 
 /* ------------------------- transfer of ownership ----------------------- */
-/* Only the OWNER may start this, and only after re-entering their password.
- * The new owner receives a one-time token; accepting it sets their password,
- * promotes them to OWNER and demotes the previous owner to ADMIN. */
-router.post('/transfer/start', requireRole('OWNER'), writeLimiter, function (req, res) {
+router.post('/transfer/start', requireRole('OWNER'), writeLimiter, asyncHandler(async function (req, res) {
   const email = clean(req.body.email).toLowerCase().slice(0, 160);
   const password = String(req.body.password || '');
 
@@ -226,12 +241,12 @@ router.post('/transfer/start', requireRole('OWNER'), writeLimiter, function (req
     return res.status(403).json({ error: 'Re-enter your own password to start the transfer.' });
   }
 
-  const existing = db.prepare('SELECT id, role, full_name FROM users WHERE email = ?').get(email);
+  const existing = await db.get('SELECT id, role, full_name FROM users WHERE email = ?', [email]);
   if (existing && existing.role === 'OWNER') {
     return res.status(409).json({ error: 'That account is already the owner.' });
   }
 
-  const tok = db.createToken({
+  const tok = await db.createToken({
     userId: req.user.id,
     email: email,
     purpose: 'ownership_transfer',
@@ -242,8 +257,8 @@ router.post('/transfer/start', requireRole('OWNER'), writeLimiter, function (req
   const base = (process.env.PORTAL_URL || (req.protocol + '://' + req.get('host'))).replace(/\/+$/, '');
   const link = base + '/accept-ownership.html?token=' + tok.token;
 
-  db.logAudit(req.user, 'ownership.transfer.started', 'user', req.user.id, { to: email }, req);
-  db.notifyRole(['ADMIN'], 'Ownership transfer started',
+  await db.logAudit(req.user, 'ownership.transfer.started', 'user', req.user.id, { to: email }, req);
+  await db.notifyRole(['ADMIN'], 'Ownership transfer started',
     req.user.full_name + ' has started a transfer of ownership to ' + email + '.', '/admin.html');
 
   return res.json({
@@ -254,24 +269,27 @@ router.post('/transfer/start', requireRole('OWNER'), writeLimiter, function (req
     emailed: false,
     note: 'There is no outbound email service configured, so deliver this one-time link to the new owner yourself (in person, by SMS or by any secure channel). It expires in 48 hours and works once.'
   });
-});
+}));
 
-router.get('/transfer/pending', requireRole('OWNER'), function (req, res) {
-  const rows = db.prepare(
+router.get('/transfer/pending', requireRole('OWNER'), asyncHandler(async function (req, res) {
+  const rows = await db.query(
     `SELECT id, email, expires_at, created_at FROM tokens
-     WHERE purpose = 'ownership_transfer' AND used_at IS NULL AND datetime(expires_at) > datetime('now')
+     WHERE purpose = 'ownership_transfer' AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP
      ORDER BY id DESC LIMIT 10`
-  ).all();
+  );
   res.json({ pending: rows });
-});
+}));
 
-router.post('/transfer/cancel', requireRole('OWNER'), writeLimiter, function (req, res) {
+router.post('/transfer/cancel', requireRole('OWNER'), writeLimiter, asyncHandler(async function (req, res) {
   const id = toIntOrNull(req.body.id);
-  const info = id
-    ? db.prepare("UPDATE tokens SET used_at = datetime('now') WHERE id = ? AND purpose = 'ownership_transfer' AND used_at IS NULL").run(id)
-    : db.prepare("UPDATE tokens SET used_at = datetime('now') WHERE purpose = 'ownership_transfer' AND used_at IS NULL").run();
-  db.logAudit(req.user, 'ownership.transfer.cancelled', 'user', req.user.id, { cancelled: info.changes }, req);
+  let info;
+  if (id) {
+    info = await db.run("UPDATE tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ? AND purpose = 'ownership_transfer' AND used_at IS NULL", [id]);
+  } else {
+    info = await db.run("UPDATE tokens SET used_at = CURRENT_TIMESTAMP WHERE purpose = 'ownership_transfer' AND used_at IS NULL");
+  }
+  await db.logAudit(req.user, 'ownership.transfer.cancelled', 'user', req.user.id, { cancelled: info.changes }, req);
   return res.json({ ok: true, cancelled: info.changes });
-});
+}));
 
 module.exports = router;

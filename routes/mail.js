@@ -1,11 +1,6 @@
 /**
  * routes/mail.js — INTERNAL portal mail.
- *
- * This is mail between users of THIS portal.  It is NOT internet email:
- * nothing leaves the server, and no Gmail/Yahoo address can receive it.
- * Delivery is a row in message_recipients; lib/mailer.js exposes an adapter
- * interface so a real SMTP bridge can be added later without changing this
- * file.
+ * Fully migrated to async/await for Universal PostgreSQL/SQLite support.
  */
 'use strict';
 
@@ -27,7 +22,7 @@ const router = express.Router();
 router.use(requireAuth);
 
 /* ------------------------- recipient resolution ------------------------ */
-function resolveRecipientIds(opts, senderId) {
+async function resolveRecipientIds(opts, senderId) {
   const type = String(opts.type || 'users');
   const ids = new Set();
 
@@ -46,9 +41,10 @@ function resolveRecipientIds(opts, senderId) {
       where.push('u.role = ?');
       params.push(role);
     }
-    const rows = db.prepare(
-      'SELECT DISTINCT u.id FROM users u LEFT JOIN staff s ON s.user_id = u.id WHERE ' + where.join(' AND ')
-    ).all(...params);
+    const rows = await db.query(
+      'SELECT DISTINCT u.id FROM users u LEFT JOIN staff s ON s.user_id = u.id WHERE ' + where.join(' AND '),
+      params
+    );
     rows.forEach(function (r) { ids.add(r.id); });
   }
 
@@ -56,51 +52,57 @@ function resolveRecipientIds(opts, senderId) {
   return Array.from(ids);
 }
 
-function recipientCountFor(opts) {
-  return resolveRecipientIds(opts, -1).length;
+async function recipientCountFor(opts) {
+  const ids = await resolveRecipientIds(opts, -1);
+  return ids.length;
 }
 
 /* ------------------------------ folders ------------------------------- */
-router.get('/folders', function (req, res) {
+router.get('/folders', asyncHandler(async function (req, res) {
   const uid = req.user.id;
-  const inbox = db.prepare(
+  const inbox = await db.get(
     `SELECT COUNT(*) AS n, SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS unread
      FROM message_recipients mr JOIN messages m ON m.id = mr.message_id
-     WHERE mr.user_id = ? AND mr.is_deleted = 0 AND mr.is_trashed = 0 AND m.status = 'sent'`
-  ).get(uid);
-  const sent = db.prepare("SELECT COUNT(*) AS n FROM messages WHERE sender_id = ? AND status = 'sent'").get(uid).n;
-  const drafts = db.prepare("SELECT COUNT(*) AS n FROM messages WHERE sender_id = ? AND status = 'draft'").get(uid).n;
-  const trash = db.prepare(
+     WHERE mr.user_id = ? AND mr.is_deleted = 0 AND mr.is_trashed = 0 AND m.status = 'sent'`,
+    [uid]
+  );
+  const sentRow = await db.get("SELECT COUNT(*) AS n FROM messages WHERE sender_id = ? AND status = 'sent'", [uid]);
+  const draftsRow = await db.get("SELECT COUNT(*) AS n FROM messages WHERE sender_id = ? AND status = 'draft'", [uid]);
+  const trash = await db.get(
     `SELECT COUNT(*) AS n FROM message_recipients mr JOIN messages m ON m.id = mr.message_id
-     WHERE mr.user_id = ? AND mr.is_deleted = 0 AND mr.is_trashed = 1 AND m.status = 'sent'`
-  ).get(uid).n;
+     WHERE mr.user_id = ? AND mr.is_deleted = 0 AND mr.is_trashed = 1 AND m.status = 'sent'`,
+    [uid]
+  );
+  
   res.json({
-    inbox: inbox.n, unread: inbox.unread || 0,
-    sent: sent, drafts: drafts, trash: trash,
-    mail_domain: db.getSetting('mail_domain'),
+    inbox: inbox ? inbox.n : 0, 
+    unread: inbox ? (inbox.unread || 0) : 0,
+    sent: sentRow ? sentRow.n : 0, 
+    drafts: draftsRow ? draftsRow.n : 0, 
+    trash: trash ? trash.n : 0,
+    mail_domain: await db.getSetting('mail_domain'),
     my_address: req.user.mail_address || '',
     external: require('../lib/mailer').mailStatus()
   });
-});
+}));
 
 /* ----------------------- address book / pickers ------------------------ */
-router.get('/recipients', function (req, res) {
+router.get('/recipients', asyncHandler(async function (req, res) {
   const type = String(req.query.type || 'users');
   const q = clean(req.query.q || '').toLowerCase().slice(0, 80);
 
   if (type === 'schools') {
-    /* Same scope as the directory itself: an officer composing a message can
-     * only address schools inside their own LGA. */
     const sc = scope.schoolWhere(req.user, 's');
     const where = sc.sql ? (' WHERE ' + sc.sql) : '';
-    return res.json({
-      schools: db.prepare(
-        'SELECT s.id, s.name, s.lga FROM schools s' + where + ' ORDER BY s.name COLLATE NOCASE'
-      ).all(...sc.params)
-    });
+    const schools = await db.query(
+      'SELECT s.id, s.name, s.lga FROM schools s' + where + ' ORDER BY s.name LIMIT 2000',
+      sc.params
+    );
+    return res.json({ schools: schools });
   }
   if (type === 'lgas') {
-    return res.json({ lgas: db.prepare('SELECT name FROM lgas ORDER BY sort_order').all().map(function (r) { return r.name; }) });
+    const lgas = await db.query('SELECT name FROM lgas ORDER BY sort_order');
+    return res.json({ lgas: lgas.map(function (r) { return r.name; }) });
   }
   if (type === 'roles') {
     return res.json({ roles: require('../lib/roles').ROLES });
@@ -108,7 +110,6 @@ router.get('/recipients', function (req, res) {
 
   const where = ["u.status = 'ACTIVE'", 'u.id != ?'];
   const params = [req.user.id];
-  /* The OWNER is not in the address book unless the reader is the owner. */
   if (!isOwner(req.user)) where.push("u.role <> 'OWNER'");
   if (q) {
     where.push('(u.full_name LIKE ? OR u.email LIKE ? OR u.mail_address LIKE ?)');
@@ -117,17 +118,18 @@ router.get('/recipients', function (req, res) {
   if (req.query.lga) { where.push('s.lga = ?'); params.push(clean(req.query.lga)); }
   if (req.query.school_id) { where.push('s.school_id = ?'); params.push(toIntOrNull(req.query.school_id)); }
 
-  const rows = db.prepare(
+  const rows = await db.query(
     `SELECT u.id, u.full_name, u.email, u.role, u.mail_address, s.school_name, s.lga, s.rank
      FROM users u LEFT JOIN staff s ON s.user_id = u.id
-     WHERE ` + where.join(' AND ') + ' ORDER BY u.full_name COLLATE NOCASE LIMIT 200'
-  ).all(...params);
+     WHERE ` + where.join(' AND ') + ' ORDER BY u.full_name LIMIT 200',
+    params
+  );
 
   return res.json({ people: rows, total: rows.length });
-});
+}));
 
 /* ------------------------------ listing ------------------------------- */
-router.get('/list', function (req, res) {
+router.get('/list', asyncHandler(async function (req, res) {
   const uid = req.user.id;
   const folder = String(req.query.folder || 'inbox').toLowerCase();
   const q = clean(req.query.q || '').slice(0, 80);
@@ -142,13 +144,17 @@ router.get('/list', function (req, res) {
     const params = [uid, status];
     if (q) { where.push('(m.subject LIKE ? OR m.body LIKE ?)'); params.push('%' + q + '%', '%' + q + '%'); }
     const whereSql = ' WHERE ' + where.join(' AND ');
-    const total = db.prepare('SELECT COUNT(*) AS n FROM messages m' + whereSql).get(...params).n;
-    const rows = db.prepare(
+    
+    const totalRow = await db.get('SELECT COUNT(*) AS n FROM messages m' + whereSql, params);
+    const total = totalRow ? totalRow.n : 0;
+    
+    const rows = await db.query(
       `SELECT m.id, m.subject, m.created_at, m.updated_at, m.status, m.audience,
         (SELECT COUNT(*) FROM message_recipients r WHERE r.message_id = m.id) AS recipients,
         (SELECT COUNT(*) FROM attachments a WHERE a.message_id = m.id) AS attachments
-       FROM messages m` + whereSql + ' ORDER BY m.id DESC LIMIT ? OFFSET ?'
-    ).all(...params, limit, offset);
+       FROM messages m` + whereSql + ' ORDER BY m.id DESC LIMIT ? OFFSET ?',
+      [...params, limit, offset]
+    );
     return res.json({
       folder: folder,
       messages: rows.map(function (r) { return Object.assign(r, { is_read: 1, sender_name: 'You' }); }),
@@ -165,10 +171,14 @@ router.get('/list', function (req, res) {
     params.push('%' + q + '%', '%' + q + '%', '%' + q + '%');
   }
   const whereSql = ' WHERE ' + where.join(' AND ');
-  const total = db.prepare(
-    'SELECT COUNT(*) AS n FROM message_recipients mr JOIN messages m ON m.id = mr.message_id JOIN users u ON u.id = m.sender_id' + whereSql
-  ).get(...params).n;
-  const rows = db.prepare(
+  
+  const totalRow = await db.get(
+    'SELECT COUNT(*) AS n FROM message_recipients mr JOIN messages m ON m.id = mr.message_id JOIN users u ON u.id = m.sender_id' + whereSql,
+    params
+  );
+  const total = totalRow ? totalRow.n : 0;
+  
+  const rows = await db.query(
     `SELECT m.id, m.subject, m.created_at, mr.is_read, mr.read_at, u.full_name AS sender_name,
       u.role AS sender_role,
       (SELECT COUNT(*) FROM message_recipients r2 WHERE r2.message_id = m.id) AS recipients,
@@ -176,29 +186,31 @@ router.get('/list', function (req, res) {
      FROM message_recipients mr
      JOIN messages m ON m.id = mr.message_id
      JOIN users u ON u.id = m.sender_id` + whereSql +
-    ' ORDER BY m.id DESC LIMIT ? OFFSET ?'
-  ).all(...params, limit, offset);
+    ' ORDER BY m.id DESC LIMIT ? OFFSET ?',
+    [...params, limit, offset]
+  );
 
   return res.json({
     folder: folder, messages: rows, total: total, page: page,
     pages: Math.max(1, Math.ceil(total / limit))
   });
-});
+}));
 
-router.get('/unread-count', function (req, res) {
-  const n = db.prepare(
+router.get('/unread-count', asyncHandler(async function (req, res) {
+  const nRow = await db.get(
     `SELECT COUNT(*) AS n FROM message_recipients mr JOIN messages m ON m.id = mr.message_id
-     WHERE mr.user_id = ? AND mr.is_read = 0 AND mr.is_deleted = 0 AND mr.is_trashed = 0 AND m.status = 'sent'`
-  ).get(req.user.id).n;
-  res.json({ unread: n });
-});
+     WHERE mr.user_id = ? AND mr.is_read = 0 AND mr.is_deleted = 0 AND mr.is_trashed = 0 AND m.status = 'sent'`,
+    [req.user.id]
+  );
+  res.json({ unread: nRow ? nRow.n : 0 });
+}));
 
 /* --------------------------- single message --------------------------- */
-function loadMessageFor(user, id) {
-  const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(id);
+async function loadMessageFor(user, id) {
+  const msg = await db.get('SELECT * FROM messages WHERE id = ?', [id]);
   if (!msg) return { error: 'Message not found', status: 404 };
   const isSender = msg.sender_id === user.id;
-  const recipient = db.prepare('SELECT * FROM message_recipients WHERE message_id = ? AND user_id = ?').get(id, user.id);
+  const recipient = await db.get('SELECT * FROM message_recipients WHERE message_id = ? AND user_id = ?', [id, user.id]);
   if (!isSender && !recipient && !isAdminish(user)) {
     return { error: 'You do not have access to this message', status: 403 };
   }
@@ -206,25 +218,26 @@ function loadMessageFor(user, id) {
   return { msg: msg, isSender: isSender, recipient: recipient };
 }
 
-router.get('/message/:id([0-9]+)', function (req, res) {
+router.get('/message/:id([0-9]+)', asyncHandler(async function (req, res) {
   const id = toIntOrNull(req.params.id);
-  const found = loadMessageFor(req.user, id);
+  const found = await loadMessageFor(req.user, id);
   if (found.error) return res.status(found.status).json({ error: found.error });
 
   const msg = found.msg;
-  const sender = db.prepare('SELECT id, full_name, email, mail_address, role FROM users WHERE id = ?').get(msg.sender_id);
-  const recipients = db.prepare(
+  const sender = await db.get('SELECT id, full_name, email, mail_address, role FROM users WHERE id = ?', [msg.sender_id]);
+  const recipients = await db.query(
     `SELECT mr.user_id, mr.is_read, mr.read_at, u.full_name, u.mail_address, u.email
-     FROM message_recipients mr JOIN users u ON u.id = mr.user_id WHERE mr.message_id = ?`
-  ).all(id);
-  const messageAttachments = db.prepare(
-    'SELECT id, original_name, size, mime FROM attachments WHERE message_id = ? ORDER BY id'
-  ).all(id);
+     FROM message_recipients mr JOIN users u ON u.id = mr.user_id WHERE mr.message_id = ?`,
+    [id]
+  );
+  const messageAttachments = await db.query(
+    'SELECT id, original_name, size, mime FROM attachments WHERE message_id = ? ORDER BY id',
+    [id]
+  );
 
   /* Opening an inbox message marks it read. */
   if (found.recipient && !found.recipient.is_read) {
-    db.prepare("UPDATE message_recipients SET is_read = 1, read_at = datetime('now') WHERE id = ?")
-      .run(found.recipient.id);
+    await db.run("UPDATE message_recipients SET is_read = 1, read_at = CURRENT_TIMESTAMP WHERE id = ?", [found.recipient.id]);
   }
 
   return res.json({
@@ -236,68 +249,69 @@ router.get('/message/:id([0-9]+)', function (req, res) {
       attachments: messageAttachments
     }
   });
-});
+}));
 
-router.post('/message/:id([0-9]+)/read', writeLimiter, function (req, res) {
+router.post('/message/:id([0-9]+)/read', writeLimiter, asyncHandler(async function (req, res) {
   const id = toIntOrNull(req.params.id);
   const isRead = (req.body.read === false || String(req.body.read) === '0') ? 0 : 1;
-  const info = db.prepare(
+  const info = await db.run(
     `UPDATE message_recipients SET is_read = ?,
-       read_at = CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END
-     WHERE message_id = ? AND user_id = ?`
-  ).run(isRead, isRead, id, req.user.id);
+       read_at = CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END
+     WHERE message_id = ? AND user_id = ?`,
+    [isRead, isRead, id, req.user.id]
+  );
   res.json({ ok: true, changed: info.changes });
-});
+}));
 
-router.post('/message/:id([0-9]+)/trash', writeLimiter, function (req, res) {
-  db.prepare('UPDATE message_recipients SET is_trashed = 1 WHERE message_id = ? AND user_id = ?')
-    .run(toIntOrNull(req.params.id), req.user.id);
+router.post('/message/:id([0-9]+)/trash', writeLimiter, asyncHandler(async function (req, res) {
+  await db.run('UPDATE message_recipients SET is_trashed = 1 WHERE message_id = ? AND user_id = ?', [toIntOrNull(req.params.id), req.user.id]);
   res.json({ ok: true });
-});
+}));
 
-router.post('/message/:id([0-9]+)/restore', writeLimiter, function (req, res) {
-  db.prepare('UPDATE message_recipients SET is_trashed = 0 WHERE message_id = ? AND user_id = ?')
-    .run(toIntOrNull(req.params.id), req.user.id);
+router.post('/message/:id([0-9]+)/restore', writeLimiter, asyncHandler(async function (req, res) {
+  await db.run('UPDATE message_recipients SET is_trashed = 0 WHERE message_id = ? AND user_id = ?', [toIntOrNull(req.params.id), req.user.id]);
   res.json({ ok: true });
-});
+}));
 
-router.delete('/message/:id([0-9]+)', writeLimiter, function (req, res) {
+router.delete('/message/:id([0-9]+)', writeLimiter, asyncHandler(async function (req, res) {
   const id = toIntOrNull(req.params.id);
-  const found = loadMessageFor(req.user, id);
+  const found = await loadMessageFor(req.user, id);
   if (found.error) return res.status(found.status).json({ error: found.error });
 
   if (found.isSender && !found.recipient) {
-    db.prepare('DELETE FROM messages WHERE id = ?').run(id); /* drafts & sent items */
+    await db.run('DELETE FROM messages WHERE id = ?', [id]); /* drafts & sent items */
   } else {
-    db.prepare('UPDATE message_recipients SET is_deleted = 1 WHERE message_id = ? AND user_id = ?').run(id, req.user.id);
+    await db.run('UPDATE message_recipients SET is_deleted = 1 WHERE message_id = ? AND user_id = ?', [id, req.user.id]);
   }
-  db.logAudit(req.user, 'mail.delete', 'message', id, {}, req);
+  await db.logAudit(req.user, 'mail.delete', 'message', id, {}, req);
   return res.json({ ok: true });
-});
+}));
 
 /* ----------------------------- attachments ---------------------------- */
 router.post('/upload', mailLimiter, mailAttachments.array('files', 5), asyncHandler(async function (req, res) {
   const files = req.files || [];
   if (!files.length) return res.status(400).json({ error: 'No file was uploaded.' });
-  const saved = files.map(function (f) {
-    const info = db.prepare(
+  
+  const saved = [];
+  for (const f of files) {
+    const info = await db.run(
       `INSERT INTO attachments (uploader_id, purpose, original_name, stored_name, mime, size, rel_path)
-       VALUES (?, 'mail', ?, ?, ?, ?, ?)`
-    ).run(req.user.id, path.basename(f.originalname).slice(0, 200), path.basename(f.filename),
-      f.mimetype, f.size, relPath(f.path));
-    return { id: info.lastInsertRowid, name: f.originalname, size: f.size, mime: f.mimetype };
-  });
+       VALUES (?, 'mail', ?, ?, ?, ?, ?)`,
+      [req.user.id, path.basename(f.originalname).slice(0, 200), path.basename(f.filename), f.mimetype, f.size, relPath(f.path)]
+    );
+    saved.push({ id: info.lastInsertRowid, name: f.originalname, size: f.size, mime: f.mimetype });
+  }
   return res.status(201).json({ ok: true, attachments: saved });
-}), handleErrors);
+}));
 
-router.get('/attachment/:id([0-9]+)', function (req, res) {
+router.get('/attachment/:id([0-9]+)', asyncHandler(async function (req, res) {
   const id = toIntOrNull(req.params.id);
-  const row = id ? db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) : null;
+  const row = id ? await db.get('SELECT * FROM attachments WHERE id = ?', [id]) : null;
   if (!row) return res.status(404).json({ error: 'Attachment not found' });
 
   let allowed = row.uploader_id === req.user.id || isAdminish(req.user);
   if (!allowed && row.message_id) {
-    const found = loadMessageFor(req.user, row.message_id);
+    const found = await loadMessageFor(req.user, row.message_id);
     allowed = !found.error;
   }
   if (!allowed) return res.status(403).json({ error: 'You do not have access to this file' });
@@ -312,7 +326,7 @@ router.get('/attachment/:id([0-9]+)', function (req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Disposition', 'attachment; filename="' + row.original_name.replace(/[^\w.\- ]/g, '_') + '"');
   return fs.createReadStream(abs).pipe(res);
-});
+}));
 
 /* -------------------------------- send -------------------------------- */
 function readMailBody(body) {
@@ -334,33 +348,39 @@ function audienceSpec(body) {
   };
 }
 
-function linkAttachments(ids, messageId, uploaderId) {
-  (ids || []).forEach(function (raw) {
+async function linkAttachments(ids, messageId, uploaderId) {
+  if (!ids) return;
+  for (const raw of ids) {
     const id = toIntOrNull(raw);
-    if (!id) return;
-    db.prepare('UPDATE attachments SET message_id = ? WHERE id = ? AND uploader_id = ? AND message_id IS NULL')
-      .run(messageId, id, uploaderId);
-  });
+    if (!id) continue;
+    await db.run(
+      'UPDATE attachments SET message_id = ? WHERE id = ? AND uploader_id = ? AND message_id IS NULL',
+      [messageId, id, uploaderId]
+    );
+  }
 }
 
-function deliver(message, recipientIds) {
-  const stmt = db.prepare('INSERT OR IGNORE INTO message_recipients (message_id, user_id) VALUES (?, ?)');
-  recipientIds.forEach(function (uid) {
-    stmt.run(message.id, uid);
-    db.notify(uid, 'New portal mail', message.subject, '/mail.html#message-' + message.id);
+async function deliver(message, recipientIds) {
+  for (const uid of recipientIds) {
+    // ON CONFLICT DO NOTHING works in both SQLite (3.24+) and PostgreSQL
+    await db.run(
+      'INSERT INTO message_recipients (message_id, user_id) VALUES (?, ?) ON CONFLICT (message_id, user_id) DO NOTHING',
+      [message.id, uid]
+    );
+    await db.notify(uid, 'New portal mail', message.subject, '/mail.html#message-' + message.id);
     realtime.sendToUser(uid, {
       type: 'mail:new', messageId: message.id, subject: message.subject,
       from: message.sender_name || '', at: message.created_at
     });
-  });
+  }
 }
 
-router.post('/send', mailLimiter, function (req, res) {
+router.post('/send', mailLimiter, asyncHandler(async function (req, res) {
   const parsed = readMailBody(req.body || {});
   if (parsed.errors.length) return res.status(422).json({ error: parsed.errors[0], errors: parsed.errors });
 
   const spec = audienceSpec(req.body || {});
-  const recipientIds = resolveRecipientIds(spec, req.user.id);
+  const recipientIds = await resolveRecipientIds(spec, req.user.id);
   if (!recipientIds.length) {
     return res.status(422).json({ error: 'No recipients matched. Choose at least one person, school, LGA or role.' });
   }
@@ -368,81 +388,72 @@ router.post('/send', mailLimiter, function (req, res) {
   const parentId = toIntOrNull(req.body.parent_id);
   let threadId = null;
   if (parentId) {
-    const parent = db.prepare('SELECT * FROM messages WHERE id = ?').get(parentId);
+    const parent = await db.get('SELECT * FROM messages WHERE id = ?', [parentId]);
     if (parent) threadId = parent.thread_id || parent.id;
   }
 
-  const info = db.prepare(
+  const info = await db.run(
     `INSERT INTO messages (thread_id, parent_id, sender_id, subject, body, audience, audience_meta, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'sent')`
-  ).run(threadId, parentId || null, req.user.id, parsed.value.subject, parsed.value.body, spec.type,
-    JSON.stringify({ ids: spec.ids, school_id: spec.school_id, lga: spec.lga, role: spec.role, count: recipientIds.length }));
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'sent')`,
+    [threadId, parentId || null, req.user.id, parsed.value.subject, parsed.value.body, spec.type,
+     JSON.stringify({ ids: spec.ids, school_id: spec.school_id, lga: spec.lga, role: spec.role, count: recipientIds.length })]
+  );
 
-  linkAttachments(req.body.attachment_ids, info.lastInsertRowid, req.user.id);
-  deliver({ id: info.lastInsertRowid, subject: parsed.value.subject, sender_name: req.user.full_name }, recipientIds);
+  await linkAttachments(req.body.attachment_ids, info.lastInsertRowid, req.user.id);
+  await deliver({ id: info.lastInsertRowid, subject: parsed.value.subject, sender_name: req.user.full_name, created_at: new Date().toISOString() }, recipientIds);
 
-  db.logAudit(req.user, 'mail.send', 'message', info.lastInsertRowid,
+  await db.logAudit(req.user, 'mail.send', 'message', info.lastInsertRowid,
     { recipients: recipientIds.length, audience: spec.type }, req);
 
   return res.status(201).json({
     ok: true, id: info.lastInsertRowid, delivered: recipientIds.length,
     note: 'Delivered to the internal portal mailboxes of the recipients.'
   });
-});
+}));
 
-router.post('/draft', writeLimiter, function (req, res) {
+router.post('/draft', writeLimiter, asyncHandler(async function (req, res) {
   const spec = audienceSpec(req.body || {});
-  const info = db.prepare(
+  const info = await db.run(
     `INSERT INTO messages (sender_id, subject, body, audience, audience_meta, status)
-     VALUES (?, ?, ?, ?, ?, 'draft')`
-  ).run(
-    req.user.id,
-    clean(req.body.subject).slice(0, 200),
-    String(req.body.body || '').slice(0, 20000),
-    spec.type,
-    JSON.stringify({ ids: spec.ids, school_id: spec.school_id, lga: spec.lga, role: spec.role })
+     VALUES (?, ?, ?, ?, ?, 'draft')`,
+    [req.user.id, clean(req.body.subject).slice(0, 200), String(req.body.body || '').slice(0, 20000), spec.type,
+     JSON.stringify({ ids: spec.ids, school_id: spec.school_id, lga: spec.lga, role: spec.role })]
   );
-  linkAttachments(req.body.attachment_ids, info.lastInsertRowid, req.user.id);
+  await linkAttachments(req.body.attachment_ids, info.lastInsertRowid, req.user.id);
   return res.status(201).json({ ok: true, id: info.lastInsertRowid, status: 'draft' });
-});
+}));
 
-router.put('/draft/:id([0-9]+)', writeLimiter, function (req, res) {
+router.put('/draft/:id([0-9]+)', writeLimiter, asyncHandler(async function (req, res) {
   const id = toIntOrNull(req.params.id);
-  const draft = id ? db.prepare("SELECT * FROM messages WHERE id = ? AND sender_id = ? AND status = 'draft'").get(id, req.user.id) : null;
+  const draft = id ? await db.get("SELECT * FROM messages WHERE id = ? AND sender_id = ? AND status = 'draft'", [id, req.user.id]) : null;
   if (!draft) return res.status(404).json({ error: 'Draft not found' });
   const spec = audienceSpec(Object.assign(JSON.parse(draft.audience_meta || '{}'), req.body || {}));
-  db.prepare(
-    "UPDATE messages SET subject = ?, body = ?, audience = ?, audience_meta = ?, updated_at = datetime('now') WHERE id = ?"
-  ).run(
-    clean(req.body.subject || draft.subject).slice(0, 200),
-    String(req.body.body === undefined ? draft.body : req.body.body).slice(0, 20000),
-    spec.type, JSON.stringify(spec), id
+  await db.run(
+    "UPDATE messages SET subject = ?, body = ?, audience = ?, audience_meta = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    [clean(req.body.subject || draft.subject).slice(0, 200), String(req.body.body === undefined ? draft.body : req.body.body).slice(0, 20000), spec.type, JSON.stringify(spec), id]
   );
   return res.json({ ok: true });
-});
+}));
 
-router.post('/draft/:id([0-9]+)/send', mailLimiter, function (req, res) {
+router.post('/draft/:id([0-9]+)/send', mailLimiter, asyncHandler(async function (req, res) {
   const id = toIntOrNull(req.params.id);
-  const draft = id ? db.prepare("SELECT * FROM messages WHERE id = ? AND sender_id = ? AND status = 'draft'").get(id, req.user.id) : null;
+  const draft = id ? await db.get("SELECT * FROM messages WHERE id = ? AND sender_id = ? AND status = 'draft'", [id, req.user.id]) : null;
   if (!draft) return res.status(404).json({ error: 'Draft not found' });
 
   const spec = audienceSpec(Object.assign(JSON.parse(draft.audience_meta || '{}'), req.body || {}));
   spec.type = spec.type || draft.audience;
-  const recipientIds = resolveRecipientIds(spec, req.user.id);
+  const recipientIds = await resolveRecipientIds(spec, req.user.id);
   if (!recipientIds.length) return res.status(422).json({ error: 'No recipients matched for this draft.' });
 
-  db.prepare(
-    "UPDATE messages SET subject = ?, body = ?, status = 'sent', audience = ?, audience_meta = ?, updated_at = datetime('now') WHERE id = ?"
-  ).run(
-    clean(req.body.subject || draft.subject).slice(0, 200),
-    String(req.body.body === undefined ? draft.body : req.body.body).slice(0, 20000),
-    spec.type, JSON.stringify(spec), id
+  await db.run(
+    "UPDATE messages SET subject = ?, body = ?, status = 'sent', audience = ?, audience_meta = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    [clean(req.body.subject || draft.subject).slice(0, 200), String(req.body.body === undefined ? draft.body : req.body.body).slice(0, 20000), spec.type, JSON.stringify(spec), id]
   );
 
-  linkAttachments(req.body.attachment_ids, id, req.user.id);
-  deliver({ id: id, subject: draft.subject, sender_name: req.user.full_name }, recipientIds);
-  db.logAudit(req.user, 'mail.send_draft', 'message', id, { recipients: recipientIds.length }, req);
+  await linkAttachments(req.body.attachment_ids, id, req.user.id);
+  await deliver({ id: id, subject: draft.subject, sender_name: req.user.full_name, created_at: new Date().toISOString() }, recipientIds);
+  await db.logAudit(req.user, 'mail.send_draft', 'message', id, { recipients: recipientIds.length }, req);
   return res.json({ ok: true, delivered: recipientIds.length });
-});
+}));
 
 module.exports = router;
