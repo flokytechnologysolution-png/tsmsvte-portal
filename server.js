@@ -1,8 +1,6 @@
 /**
  * server.js — Taraba State Ministry of Secondary, Vocational and Technical
  * Education portal.
- *
- * One process, one SQLite file, plain HTML/CSS/JS. No build step, no Docker.
  */
 'use strict';
 
@@ -29,8 +27,6 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 
 const app = express();
 
-/* Behind Nginx / Render / Railway we must trust the proxy for real client IPs
- * (rate limiting keys off req.ip). */
 if (String(process.env.TRUST_PROXY || '0') === '1') app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
@@ -41,7 +37,7 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],   /* settings drive inline colours */
+      styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'blob:'],
       connectSrc: ["'self'", 'ws:', 'wss:'],
       fontSrc: ["'self'", 'data:'],
@@ -60,9 +56,10 @@ app.use(helmet({
 
 const allowedOrigins = String(process.env.CORS_ORIGINS || '')
   .split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);           /* same-origin / curl */
+    if (!origin) return callback(null, true);
     if (allowedOrigins.length === 0) return callback(null, false);
     return callback(null, allowedOrigins.indexOf(origin) !== -1);
   },
@@ -77,20 +74,12 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 app.use(globalLimiter);
 
-/* CSRF: issue the double-submit cookie, then verify unsafe API calls. */
 app.use(csrf.issueToken);
 app.use('/api', csrf.verify);
-
-/* Who is calling? (never blocks; it just populates req.user) */
 app.use(auth.attachUser);
 
 app.get('/api/health', function (req, res) {
-  /* Deliberately minimal: no file names, no paths, nothing about the host. */
-  res.json({
-    ok: true,
-    app: 'taraba-edu-portal',
-    time: new Date().toISOString()
-  });
+  res.json({ ok: true, app: 'taraba-edu-portal', time: new Date().toISOString() });
 });
 
 app.use('/api/auth', require('./routes/auth'));
@@ -106,13 +95,9 @@ app.use('/api/mail', require('./routes/mail'));
 app.use('/api/sms', require('./routes/sms'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/admin', require('./routes/admin'));
-app.use('/api', notFound);   /* unknown API path -> JSON 404 */
+app.use('/api', notFound);
 
 /* ------------------------------ static files --------------------------- */
-/* Uploaded files are exposed selectively: mailbox attachments must NEVER be
- * reachable by guessing a URL, so /uploads/mail is deliberately excluded
- * (attachments are streamed through the authenticated /api/mail/attachment
- * route instead). */
 const staticOptions = {
   maxAge: IS_PROD ? '7d' : 0,
   etag: true,
@@ -127,6 +112,7 @@ app.get('/sw.js', function (req, res) {
   res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(PUBLIC_DIR, 'sw.js'));
 });
+
 app.use(express.static(PUBLIC_DIR, {
   extensions: ['html'],
   maxAge: IS_PROD ? '1h' : 0,
@@ -135,7 +121,6 @@ app.use(express.static(PUBLIC_DIR, {
   }
 }));
 
-/* Friendly URLs */
 app.get('/school/:id', function (req, res) { res.sendFile(path.join(PUBLIC_DIR, 'school.html')); });
 app.get('/news/:slug', function (req, res) { res.sendFile(path.join(PUBLIC_DIR, 'news-detail.html')); });
 
@@ -146,20 +131,36 @@ app.use(errorHandler);
 const server = http.createServer(app);
 realtime.attach(server);
 
-server.listen(PORT, function () {
+// Make the startup callback async to await db.getSetting
+server.listen(PORT, async function () {
   const aiStatus = require('./lib/ai').status();
   const smsStatus = require('./lib/sms').providerStatus();
   const mailStatus = require('./lib/mailer').mailStatus();
   const line = '='.repeat(64);
+  
+  // Await the async function so it prints the actual name, not "[object Promise]"
+  const ministryName = await db.getSetting('ministry_name', 'Taraba State Ministry of Secondary, Vocational and Technical Education');
+  
   console.log('\n' + line);
-  console.log(' ' + db.getSetting('ministry_name'));
-  console.log(' Portal running at http://localhost:' + PORT);
+  console.log(' ' + ministryName);
+  console.log(' Portal running at http://localhost:' + PORT + (IS_PROD ? ' (PRODUCTION)' : ''));
   console.log(line);
-  console.log(' Database   : ' + db.DB_FILE);
+  
+  if (IS_PROD && db.DB_FILE && db.DB_FILE.endsWith('.db') && !process.env.DATABASE_URL) {
+    console.warn('\n⚠️  WARNING: Running in PRODUCTION with a local SQLite database (' + db.DB_FILE + ').');
+    console.warn('   Render\'s filesystem is EPHEMERAL. All data will be LOST on restart/deploy.');
+    console.warn('   Please set DATABASE_URL in Render.\n');
+  }
+
+  console.log(' Database   : ' + (process.env.DATABASE_URL ? 'PostgreSQL (Connected)' : db.DB_FILE));
   console.log(' Uploads    : ' + db.UPLOAD_DIR);
-  console.log(' LGAs seeded: ' + db.prepare('SELECT COUNT(*) AS n FROM lgas').get().n);
-  console.log(' Schools    : ' + db.prepare('SELECT COUNT(*) AS n FROM schools').get().n +
-              '  (add the real schools from the admin dashboard)');
+  
+  // These are safe to call synchronously as they are just counts, but we can await them to be perfectly safe
+  const lgaCount = await db.get('SELECT COUNT(*) AS n FROM lgas');
+  const schoolCount = await db.get('SELECT COUNT(*) AS n FROM schools');
+  
+  console.log(' LGAs seeded: ' + (lgaCount ? lgaCount.n : 0));
+  console.log(' Schools    : ' + (schoolCount ? schoolCount.n : 0) + '  (add the real schools from the admin dashboard)');
   console.log(' AI         : ' + aiStatus.model);
   console.log(' SMS        : ' + smsStatus.provider + (smsStatus.dryRun ? ' (DRY-RUN - nothing is sent)' : ' (live)'));
   console.log(' Mail       : ' + mailStatus.adapter + ' (internal portal mail only)');
