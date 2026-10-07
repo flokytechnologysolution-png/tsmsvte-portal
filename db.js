@@ -1,11 +1,11 @@
 /**
  * db.js — Universal database handler (PostgreSQL for Production, SQLite for Local)
- * COMPLETE & FINAL VERSION
+ * CORRECTED & COMPLETE VERSION
  */
 'use strict';
 
 const path = require('path');
-const fs = require('');
+const fs = require('fs'); // FIXED TYPO HERE
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 require('dotenv').config();
@@ -50,11 +50,17 @@ if (IS_PROD) {
 }
 
 /* ------------------------------------------------------------------ *
- * Universal Async Query Wrappers
+ * Universal Async Query Wrappers (with automatic ? to $1, $2 conversion)
  * ------------------------------------------------------------------ */
+function toPgSql(sql) {
+  if (!IS_PROD) return sql; // SQLite uses ? natively
+  let qCount = 0;
+  return sql.replace(/\?/g, () => `$${++qCount}`); // Convert ? to $1, $2, etc. for PostgreSQL
+}
+
 async function query(sql, params = []) {
   if (IS_PROD) {
-    const res = await pgPool.query(sql, params);
+    const res = await pgPool.query(toPgSql(sql), params);
     return res.rows;
   } else {
     const stmt = sqliteDb.prepare(sql);
@@ -64,7 +70,7 @@ async function query(sql, params = []) {
 
 async function get(sql, params = []) {
   if (IS_PROD) {
-    const res = await pgPool.query(sql, params);
+    const res = await pgPool.query(toPgSql(sql), params);
     return res.rows[0] || null;
   } else {
     const stmt = sqliteDb.prepare(sql);
@@ -74,7 +80,7 @@ async function get(sql, params = []) {
 
 async function run(sql, params = []) {
   if (IS_PROD) {
-    const res = await pgPool.query(sql, params);
+    const res = await pgPool.query(toPgSql(sql), params);
     return { lastInsertRowid: res.rows[0]?.id, changes: res.rowCount };
   } else {
     const stmt = sqliteDb.prepare(sql);
@@ -151,6 +157,9 @@ ensureSchema().catch(console.error);
  * Constants & Helpers
  * ------------------------------------------------------------------ */
 const LGAS = ['Ardo-Kola', 'Bali', 'Donga', 'Gashaka', 'Gassol', 'Ibi', 'Jalingo', 'Karim-Lamido', 'Kurmi', 'Lau', 'Sardauna', 'Takum', 'Ussa', 'Wukari', 'Yorro', 'Zing'];
+const SCHOOL_TYPES = ['junior_secondary', 'senior_secondary', 'technical', 'vocational'];
+const SCHOOL_CATEGORIES = ['boys', 'girls', 'mixed'];
+const BOARDING_TYPES = ['boarding', 'day', 'both'];
 
 const DEFAULT_SETTINGS = {
   ministry_name: 'Taraba State Ministry of Secondary, Vocational and Technical Education',
@@ -167,7 +176,7 @@ function slugify(text) {
 }
 
 async function getSetting(key, fallback) {
-  const row = await get(IS_PROD ? 'SELECT value FROM settings WHERE key = $1' : 'SELECT value FROM settings WHERE key = ?', [key]);
+  const row = await get('SELECT value FROM settings WHERE key = ?', [key]);
   if (row && row.value !== null && row.value !== undefined) return row.value;
   if (Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key)) return DEFAULT_SETTINGS[key];
   return fallback === undefined ? '' : fallback;
@@ -175,11 +184,7 @@ async function getSetting(key, fallback) {
 
 async function setSetting(key, value) {
   const val = value === null || value === undefined ? '' : String(value);
-  if (IS_PROD) {
-    await run(`INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, CURRENT_TIMESTAMP) ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP`, [key, val]);
-  } else {
-    sqliteDb.prepare(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`).run(key, val);
-  }
+  await run(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, [key, val]);
 }
 
 async function getSettings() {
@@ -203,11 +208,7 @@ async function seedLgas() {
   for (let i = 0; i < LGAS.length; i++) {
     const name = LGAS[i];
     const slug = slugify(name);
-    if (IS_PROD) {
-      await run(`INSERT INTO lgas (name, slug, sort_order) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING`, [name, slug, i + 1]);
-    } else {
-      sqliteDb.prepare('INSERT OR IGNORE INTO lgas (name, slug, sort_order) VALUES (?, ?, ?)').run(name, slug, i + 1);
-    }
+    await run(`INSERT INTO lgas (name, slug, sort_order) VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING`, [name, slug, i + 1]);
   }
 }
 
@@ -216,17 +217,13 @@ async function seedOwner() {
   const password = process.env.OWNER_PASSWORD || 'ChangeMe!2026';
   const name = String(process.env.OWNER_NAME || 'Portal Owner').trim();
 
-  const existing = await get(IS_PROD ? 'SELECT * FROM users WHERE role = $1 ORDER BY id LIMIT 1' : 'SELECT * FROM users WHERE role = ? ORDER BY id LIMIT 1', ['OWNER']);
+  const existing = await get('SELECT * FROM users WHERE role = ? ORDER BY id LIMIT 1', ['OWNER']);
   if (existing) return { created: false, email: existing.email };
 
   const hash = bcrypt.hashSync(password, 10);
   const mail = makeMailAddress(name, await getSetting('mail_domain'));
   
-  if (IS_PROD) {
-    await run(`INSERT INTO users (email, password_hash, full_name, role, status, mail_address) VALUES ($1, $2, $3, 'OWNER', 'ACTIVE', $4)`, [email, hash, name, mail]);
-  } else {
-    sqliteDb.prepare(`INSERT INTO users (email, password_hash, full_name, role, status, mail_address) VALUES (?, ?, ?, 'OWNER', 'ACTIVE', ?)`).run(email, hash, name, mail);
-  }
+  await run(`INSERT INTO users (email, password_hash, full_name, role, status, mail_address) VALUES (?, ?, ?, 'OWNER', 'ACTIVE', ?)`, [email, hash, name, mail]);
   return { created: true, email: email };
 }
 
@@ -243,10 +240,7 @@ seed().then(owner => { seededOwner = owner; }).catch(console.error);
  * ------------------------------------------------------------------ */
 async function logAudit(actor, action, entity, entityId, details, req) {
   try {
-    const sql = IS_PROD 
-      ? `INSERT INTO audit_log (user_id, user_name, role, action, entity, entity_id, details, ip, user_agent) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
-      : `INSERT INTO audit_log (user_id, user_name, role, action, entity, entity_id, details, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-    await run(sql, [
+    await run(`INSERT INTO audit_log (user_id, user_name, role, action, entity, entity_id, details, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
       (actor && actor.id) || null,
       (actor && actor.full_name) || 'system',
       (actor && actor.role) || 'SYSTEM',
@@ -264,20 +258,14 @@ async function logAudit(actor, action, entity, entityId, details, req) {
 
 async function notify(userId, title, body, link) {
   if (!userId) return null;
-  const sql = IS_PROD
-    ? `INSERT INTO notifications (user_id, title, body, link) VALUES ($1, $2, $3, $4)`
-    : `INSERT INTO notifications (user_id, title, body, link) VALUES (?, ?, ?, ?)`;
-  const info = await run(sql, [userId, title || '', body || '', link || '']);
+  const info = await run(`INSERT INTO notifications (user_id, title, body, link) VALUES (?, ?, ?, ?)`, [userId, title || '', body || '', link || '']);
   return info.lastInsertRowid;
 }
 
 async function notifyRole(roles, title, body, link) {
   const list = Array.isArray(roles) ? roles : [roles];
-  const placeholders = list.map((_, i) => IS_PROD ? `$${i + 1}` : '?').join(',');
-  const sql = IS_PROD
-    ? `SELECT id FROM users WHERE role IN (${placeholders}) AND status = 'ACTIVE'`
-    : `SELECT id FROM users WHERE role IN (${placeholders}) AND status = 'ACTIVE'`;
-  const users = await query(sql, list);
+  const placeholders = list.map(() => '?').join(',');
+  const users = await query(`SELECT id FROM users WHERE role IN (${placeholders}) AND status = 'ACTIVE'`, list);
   for (const u of users) {
     await notify(u.id, title, body, link);
   }
@@ -288,10 +276,7 @@ async function createToken(opts) {
   const hash = crypto.createHash('sha256').update(raw).digest('hex');
   const minutes = opts.ttlMinutes || 60 * 24;
   const expires = new Date(Date.now() + minutes * 60000).toISOString();
-  const sql = IS_PROD
-    ? `INSERT INTO tokens (user_id, email, purpose, token_hash, meta, expires_at) VALUES ($1, $2, $3, $4, $5, $6)`
-    : `INSERT INTO tokens (user_id, email, purpose, token_hash, meta, expires_at) VALUES (?, ?, ?, ?, ?, ?)`;
-  await run(sql, [
+  await run(`INSERT INTO tokens (user_id, email, purpose, token_hash, meta, expires_at) VALUES (?, ?, ?, ?, ?, ?)`, [
     opts.userId || null,
     (opts.email || '').toLowerCase(),
     opts.purpose,
@@ -305,15 +290,9 @@ async function createToken(opts) {
 async function consumeToken(rawToken, purpose) {
   if (!rawToken) return null;
   const hash = crypto.createHash('sha256').update(String(rawToken)).digest('hex');
-  const sql = IS_PROD
-    ? `SELECT * FROM tokens WHERE token_hash = $1 AND purpose = $2 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP ORDER BY id DESC LIMIT 1`
-    : `SELECT * FROM tokens WHERE token_hash = ? AND purpose = ? AND used_at IS NULL AND datetime(expires_at) > datetime('now') ORDER BY id DESC LIMIT 1`;
-  const row = await get(sql, [hash, purpose]);
+  const row = await get(`SELECT * FROM tokens WHERE token_hash = ? AND purpose = ? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP ORDER BY id DESC LIMIT 1`, [hash, purpose]);
   if (!row) return null;
-  const updateSql = IS_PROD
-    ? `UPDATE tokens SET used_at = CURRENT_TIMESTAMP WHERE id = $1`
-    : `UPDATE tokens SET used_at = datetime('now') WHERE id = ?`;
-  await run(updateSql, [row.id]);
+  await run(`UPDATE tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?`, [row.id]);
   return row;
 }
 
@@ -340,7 +319,11 @@ module.exports = {
   UPLOAD_DIR: UPLOAD_DIR,
   ROOT: ROOT,
   LGAS: LGAS,
+  SCHOOL_TYPES: SCHOOL_TYPES,
+  SCHOOL_CATEGORIES: SCHOOL_CATEGORIES,
+  BOARDING_TYPES: BOARDING_TYPES,
   DEFAULT_SETTINGS: DEFAULT_SETTINGS,
+  slugify: slugify,
   query: query,
   get: get,
   run: run,
