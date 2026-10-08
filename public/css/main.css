@@ -672,3 +672,10 @@ table.data td.actions { white-space: nowrap; }
   .auth-card { padding: 22px 18px; }
   .bar-row { grid-template-columns: 100px 1fr 40px; }
 }
+
+/* Contact page */
+.contact-list{margin:0;padding:20px;display:grid;gap:14px}
+.contact-row{display:grid;grid-template-columns:140px 1fr;gap:12px}
+.contact-row dt{font-weight:600;color:var(--primary)}
+.contact-row dd{margin:0}
+@media (max-width:560px){.contact-row{grid-template-columns:1fr;gap:2px}}
