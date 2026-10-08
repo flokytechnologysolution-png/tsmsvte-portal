@@ -126,6 +126,12 @@ function walkFiles(dir, base, out) {
 }
 
 router.get('/backup', asyncHandler(async function (req, res) {
+  /* The file-level backup only exists on the SQLite engine; on PostgreSQL the
+   * data lives in a managed service, so answer 501 instead of failing mid-way
+   * on a database file that does not exist. */
+  if (typeof db.backup !== 'function') {
+    return res.status(501).json({ error: 'Database file backup is only available when the portal runs on SQLite, not on PostgreSQL.' });
+  }
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const tmpDb = path.join(path.dirname(db.DB_FILE), 'backup-' + Date.now() + '.db');
 
@@ -171,6 +177,9 @@ router.get('/backup', asyncHandler(async function (req, res) {
 router.post('/restore', requireRole('OWNER'), writeLimiter, backupZip.single('file'),
   asyncHandler(async function (req, res) {
     if (!req.file) return res.status(400).json({ error: 'Choose a backup .zip file to restore.' });
+    if (typeof db.backup !== 'function') {
+      return res.status(501).json({ error: 'Database file restore is only available when the portal runs on SQLite, not on PostgreSQL.' });
+    }
     const password = String(req.body.password || '');
     if (!password || !bcrypt.compareSync(password, req.user.password_hash)) {
       return res.status(403).json({ error: 'Your password is required to restore a backup.' });
@@ -274,8 +283,9 @@ router.post('/transfer/start', requireRole('OWNER'), writeLimiter, asyncHandler(
 router.get('/transfer/pending', requireRole('OWNER'), asyncHandler(async function (req, res) {
   const rows = await db.query(
     `SELECT id, email, expires_at, created_at FROM tokens
-     WHERE purpose = 'ownership_transfer' AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP
-     ORDER BY id DESC LIMIT 10`
+     WHERE purpose = 'ownership_transfer' AND used_at IS NULL AND expires_at > ?
+     ORDER BY id DESC LIMIT 10`,
+    [new Date().toISOString()]
   );
   res.json({ pending: rows });
 }));

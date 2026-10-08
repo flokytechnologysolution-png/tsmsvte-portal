@@ -76,20 +76,23 @@ function publicUser(row) {
 
 /** Populate req.user (full DB row) when a valid token is present. */
 function attachUser(req, res, next) {
+  attachUserAsync(req).then(function () { next(); }, next);
+}
+
+async function attachUserAsync(req) {
   req.user = null;
   let token = (req.cookies && req.cookies[COOKIE_NAME]) || null;
   if (!token && req.headers.authorization && req.headers.authorization.indexOf('Bearer ') === 0) {
     token = req.headers.authorization.slice(7);
   }
-  if (!token) return next();
+  if (!token) return;
   try {
     const payload = jwt.verify(token, SECRET);
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.sub);
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [payload.sub]);
     if (user && user.status === 'ACTIVE') req.user = user;
   } catch (err) {
-    /* expired / tampered token: treat as anonymous */
+    /* expired / tampered token (or a failed lookup): treat as anonymous */
   }
-  return next();
 }
 
 function requireAuth(req, res, next) {
@@ -117,14 +120,16 @@ function requireRole() {
  * 404 so a guessed id reveals nothing.
  */
 function requireNotOwnerTarget(req, res, next) {
-  const id = parseInt(String(req.params.id || ''), 10);
-  if (Number.isFinite(id)) {
-    const target = db.prepare('SELECT role FROM users WHERE id = ?').get(id);
-    if (target && target.role === 'OWNER' && req.user.role !== 'OWNER') {
-      return res.status(404).json({ error: 'Not found' });
+  Promise.resolve().then(async function () {
+    const id = parseInt(String(req.params.id || ''), 10);
+    if (Number.isFinite(id)) {
+      const target = await db.get('SELECT role FROM users WHERE id = ?', [id]);
+      if (target && target.role === 'OWNER' && req.user.role !== 'OWNER') {
+        return res.status(404).json({ error: 'Not found' });
+      }
     }
-  }
-  return next();
+    return next();
+  }).catch(next);
 }
 
 function requireExactRole() {

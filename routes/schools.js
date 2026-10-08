@@ -21,10 +21,10 @@ const router = express.Router();
 const CSV_HEADERS = ['name', 'lga', 'address', 'principal', 'phone', 'email',
   'type', 'category', 'boarding', 'year_established'];
 
-function lgaLookup() {
+async function lgaLookup() {
   const map = {};
   const key = function (v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]/g, ''); };
-  db.prepare('SELECT id, name, slug FROM lgas').all().forEach(function (r) {
+  (await db.query('SELECT id, name, slug FROM lgas')).forEach(function (r) {
     /* The entry carries the id as well as the display name so the write paths
      * can set schools.lga_id from a row they have actually validated. */
     const hit = { id: r.id, name: r.name };
@@ -86,31 +86,39 @@ function schoolFrom(row) {
 
 /* ------------------------------- public ------------------------------- */
 
+/* SQLite says "UNIQUE constraint failed: ..."; PostgreSQL says "duplicate key
+ * value violates unique constraint ...".  Both mean the same 409. */
+function isDuplicateKey(err) {
+  const msg = String((err && err.message) || '');
+  return msg.indexOf('UNIQUE') !== -1 || msg.indexOf('duplicate key') !== -1;
+}
+
 /* Filter options for the directory UI */
-router.get('/options', function (req, res) {
+router.get('/options', asyncHandler(async function (req, res) {
   res.json({
-    lgas: db.prepare('SELECT name, slug FROM lgas ORDER BY sort_order').all(),
+    lgas: await db.query('SELECT name, slug FROM lgas ORDER BY sort_order'),
     types: db.SCHOOL_TYPES,
     categories: db.SCHOOL_CATEGORIES,
     boarding: db.BOARDING_TYPES
   });
-});
+}));
 
 /* Per-LGA summary with counts (home page quick stats + directory browse) */
-router.get('/lgas', function (req, res) {
+router.get('/lgas', asyncHandler(async function (req, res) {
   /* `id` is included so administrative pickers (LGA-scoped roles) can post it
    * back; the summary fields are unchanged. */
-  const sc = scope.lgaListWhere(req.user, 'l');
+  const sc = await scope.lgaListWhere(req.user, 'l');
   const where = sc.sql ? (' WHERE ' + sc.sql) : '';
-  const rows = db.prepare(
+  const rows = await db.query(
     `SELECT l.id, l.name, l.slug, COUNT(s.id) AS total
      FROM lgas l LEFT JOIN schools s ON s.lga_id = l.id AND s.status = 'active'
      ${where}
-     GROUP BY l.id ORDER BY l.sort_order`
-  ).all(...sc.params);
+     GROUP BY l.id ORDER BY l.sort_order`,
+    sc.params
+  );
   res.set('Cache-Control', 'public, max-age=60');
   res.json({ lgas: rows, total_lgas: rows.length });
-});
+}));
 
 router.get('/template.csv', function (req, res) {
   const sample = {
@@ -131,7 +139,7 @@ router.get('/template.csv', function (req, res) {
   res.send(body);
 });
 
-router.get('/', function (req, res) {
+router.get('/', asyncHandler(async function (req, res) {
   const q = clean(req.query.q || '').slice(0, 80);
   const lga = clean(req.query.lga || '').slice(0, 60);
   const type = clean(req.query.type || '');
@@ -150,15 +158,19 @@ router.get('/', function (req, res) {
 
   /* Scope is applied here, not in the filters above, so a scoped caller cannot
    * widen their view by passing ?lga= of somebody else's. */
-  const sc = scope.schoolWhere(req.user, 's');
+  const sc = await scope.schoolWhere(req.user, 's');
   if (sc.sql) { where.push(sc.sql); params.push.apply(params, sc.params); }
 
   const whereSql = where.join(' AND ');
-  const total = db.prepare('SELECT COUNT(*) AS n FROM schools s WHERE ' + whereSql).get(...params).n;
-  const rows = db.prepare(
+  const totalRow = await db.get('SELECT COUNT(*) AS n FROM schools s WHERE ' + whereSql, params);
+  const total = totalRow ? totalRow.n : 0;
+  /* LOWER() instead of COLLATE NOCASE: the SQLite-only collation does not
+   * exist in PostgreSQL, and LOWER() orders case-insensitively on both. */
+  const rows = await db.query(
     'SELECT * FROM schools s WHERE ' + whereSql +
-    ' ORDER BY s.name COLLATE NOCASE LIMIT ? OFFSET ?'
-  ).all(...params, limit, (page - 1) * limit);
+    ' ORDER BY LOWER(s.name) LIMIT ? OFFSET ?',
+    params.concat([limit, (page - 1) * limit])
+  );
 
   res.json({
     schools: rows.map(schoolFrom),
@@ -167,12 +179,12 @@ router.get('/', function (req, res) {
     pages: Math.max(1, Math.ceil(total / limit)),
     limit: limit
   });
-});
+}));
 
 /* ---------------------------- admin: write ---------------------------- */
 
-function readSchoolBody(body) {
-  const lgas = lgaLookup();
+async function readSchoolBody(body) {
+  const lgas = await lgaLookup();
   const name = clean(body.name).slice(0, 200);
   const lgaRaw = clean(body.lga);
   const lgaKey = lgaRaw.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -219,29 +231,31 @@ function readSchoolBody(body) {
 /* LGA_OFFICER may add schools inside their own LGA; SCHOOL_ADMIN may not add
  * schools at all.  requireRole('ADMIN') is dropped here because it would refuse
  * the LGA_OFFICER outright — requireSchoolCreate does the finer check. */
-router.post('/', requireAuth, scope.requireSchoolCreate, writeLimiter, function (req, res, next) {
-  const parsed = readSchoolBody(req.body || {});
+router.post('/', requireAuth, scope.requireSchoolCreate, writeLimiter, asyncHandler(async function (req, res, next) {
+  const parsed = await readSchoolBody(req.body || {});
   if (parsed.errors.length) {
     return res.status(422).json({ error: parsed.errors[0], errors: parsed.errors });
   }
   const v = parsed.value;
-  if (!scope.canCreateSchool(req.user, v.lga_id)) {
+  if (!(await scope.canCreateSchool(req.user, v.lga_id))) {
     return res.status(422).json({ error: 'You can only add schools inside your own LGA.' });
   }
   try {
-    const info = db.prepare(
+    const info = await db.run(
       `INSERT INTO schools (name, lga, lga_id, address, principal, phone, email, type, category, boarding, year_established, notes, status)
-       VALUES (@name, @lga, @lga_id, @address, @principal, @phone, @email, @type, @category, @boarding, @year_established, @notes, @status)`
-    ).run(v);
-    db.logAudit(req.user, 'school.create', 'school', info.lastInsertRowid, { name: v.name, lga: v.lga }, req);
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [v.name, v.lga, v.lga_id, v.address, v.principal, v.phone, v.email,
+       v.type, v.category, v.boarding, v.year_established, v.notes, v.status]
+    );
+    await db.logAudit(req.user, 'school.create', 'school', info.lastInsertRowid, { name: v.name, lga: v.lga }, req);
     return res.status(201).json({ ok: true, id: info.lastInsertRowid });
   } catch (err) {
-    if (String(err.message).indexOf('UNIQUE') !== -1) {
+    if (isDuplicateKey(err)) {
       return res.status(409).json({ error: 'A school with that name already exists in ' + v.lga + '.' });
     }
     return next(err);
   }
-});
+}));
 
 /* NOTE: the numeric guard keeps /export.csv and /template.csv reachable. */
 router.get('/:id([0-9]+)', scope.requireSchoolScope, function (req, res) {
@@ -250,17 +264,17 @@ router.get('/:id([0-9]+)', scope.requireSchoolScope, function (req, res) {
 
 /* Scope decides who may reach the row at all (out-of-scope -> 404); the caller's
  * scope kind then decides how much of the record they may rewrite. */
-router.put('/:id([0-9]+)', requireAuth, scope.requireSchoolScope, writeLimiter, function (req, res, next) {
+router.put('/:id([0-9]+)', requireAuth, scope.requireSchoolScope, writeLimiter, asyncHandler(async function (req, res, next) {
   const existing = req.school;
   const id = existing.id;
 
-  const parsed = readSchoolBody(Object.assign({}, existing, req.body || {}));
+  const parsed = await readSchoolBody(Object.assign({}, existing, req.body || {}));
   if (parsed.errors.length) {
     return res.status(422).json({ error: parsed.errors[0], errors: parsed.errors });
   }
 
   const v = parsed.value;
-  const kind = scope.scopeOf(req.user).kind;
+  const kind = (await scope.scopeOf(req.user)).kind;
   if (kind === 'lga' || kind === 'school') {
     /* Nobody may relocate a record into or out of their own scope — the text
      * column and the FK are pinned together. */
@@ -274,55 +288,59 @@ router.put('/:id([0-9]+)', requireAuth, scope.requireSchoolScope, writeLimiter, 
   }
   v.id = id;
   try {
-    db.prepare(
-      `UPDATE schools SET name=@name, lga=@lga, lga_id=@lga_id, address=@address, principal=@principal, phone=@phone,
-        email=@email, type=@type, category=@category, boarding=@boarding, year_established=@year_established,
-        notes=@notes, status=@status, updated_at=datetime('now') WHERE id=@id`
-    ).run(v);
-    db.logAudit(req.user, 'school.update', 'school', id, {
+    await db.run(
+      `UPDATE schools SET name=?, lga=?, lga_id=?, address=?, principal=?, phone=?,
+        email=?, type=?, category=?, boarding=?, year_established=?,
+        notes=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+      [v.name, v.lga, v.lga_id, v.address, v.principal, v.phone,
+       v.email, v.type, v.category, v.boarding, v.year_established,
+       v.notes, v.status, v.id]
+    );
+    await db.logAudit(req.user, 'school.update', 'school', id, {
       name: v.name, scope: kind
     }, req);
     return res.json({ ok: true });
   } catch (err) {
-    if (String(err.message).indexOf('UNIQUE') !== -1) {
+    if (isDuplicateKey(err)) {
       return res.status(409).json({ error: 'Another school already uses that name in ' + v.lga + '.' });
     }
     return next(err);
   }
-});
+}));
 
 /* Deleting is a statewide action: an out-of-scope row is a 404, then a row the
  * caller can see but not delete is a 403.  Nothing outside their scope leaks. */
 router.delete('/:id([0-9]+)', requireAuth, scope.requireSchoolScope, writeLimiter,
-  function (req, res) {
+  asyncHandler(async function (req, res) {
     const row = req.school;
-    if (!scope.canDeleteSchool(req.user)) {
+    if (!(await scope.canDeleteSchool(req.user))) {
       return res.status(403).json({ error: 'Your role cannot delete schools from the directory.' });
     }
     /* A school with teachers on its books cannot be deleted: the register
      * points at it, and silently orphaning people is worse than refusing. */
-    const held = db.prepare('SELECT COUNT(*) AS n FROM teachers WHERE school_id = ?').get(row.id);
+    const held = await db.get('SELECT COUNT(*) AS n FROM teachers WHERE school_id = ?', [row.id]);
     if (held && held.n > 0) {
       return res.status(409).json({
         error: 'That school still has ' + held.n + ' teacher' + (held.n === 1 ? '' : 's') +
           ' on its books. Transfer or remove them first.'
       });
     }
-    db.prepare('DELETE FROM schools WHERE id = ?').run(row.id);
-    db.logAudit(req.user, 'school.delete', 'school', row.id, { name: row.name }, req);
+    await db.run('DELETE FROM schools WHERE id = ?', [row.id]);
+    await db.logAudit(req.user, 'school.delete', 'school', row.id, { name: row.name }, req);
     return res.json({ ok: true });
-  });
+  }));
 
 /* ----------------------------- CSV import ----------------------------- */
 
 /* Export and import honour the same scope as the list: an officer's export
  * contains only their LGA, so it cannot become a side channel. */
-router.get('/export.csv', requireAuth, function (req, res) {
-  const sc = scope.schoolWhere(req.user, 's');
+router.get('/export.csv', requireAuth, asyncHandler(async function (req, res) {
+  const sc = await scope.schoolWhere(req.user, 's');
   const where = sc.sql ? (' WHERE ' + sc.sql) : '';
-  const rows = db.prepare(
-    'SELECT * FROM schools s' + where + ' ORDER BY s.lga, s.name COLLATE NOCASE'
-  ).all(...sc.params)
+  const rows = (await db.query(
+    'SELECT * FROM schools s' + where + ' ORDER BY s.lga, LOWER(s.name)',
+    sc.params
+  ))
     .map(function (r) {
       return {
         name: r.name, lga: r.lga, address: r.address, principal: r.principal, phone: r.phone,
@@ -330,11 +348,11 @@ router.get('/export.csv', requireAuth, function (req, res) {
         year_established: r.year_established === null ? '' : r.year_established
       };
     });
-  db.logAudit(req.user, 'school.export', 'school', '', { count: rows.length }, req);
+  await db.logAudit(req.user, 'school.export', 'school', '', { count: rows.length }, req);
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="schools-export.csv"');
   res.send(csv.toCsv(CSV_HEADERS, rows));
-});
+}));
 
 router.post('/import', requireAuth, scope.requireSchoolCreate, writeLimiter, csvMemory.single('file'),
   asyncHandler(async function (req, res) {
@@ -342,50 +360,53 @@ router.post('/import', requireAuth, scope.requireSchoolCreate, writeLimiter, csv
     const dryRun = String(req.body.dry_run || '') === '1' || String(req.body.dry_run || '') === 'true';
     const rows = csv.toObjects(req.file.buffer.toString('utf8').slice(0, 2 * 1024 * 1024));
     if (!rows.length) return res.status(422).json({ error: 'The CSV file contains no data rows.' });
-    if (!scope.canImportSchools(req.user)) {
+    if (!(await scope.canImportSchools(req.user))) {
       return res.status(403).json({ error: 'Your role cannot import schools.' });
     }
 
     const report = { total: rows.length, created: 0, updated: 0, failed: 0, errors: [], dry_run: dryRun };
-    const insert = db.prepare(
+    /* One transaction for the whole file: a failure rolls every row back
+     * instead of leaving a half-imported directory behind. */
+    const UPSERT_SQL =
       `INSERT INTO schools (name, lga, lga_id, address, principal, phone, email, type, category, boarding, year_established, notes, status)
-       VALUES (@name, @lga, @lga_id, @address, @principal, @phone, @email, @type, @category, @boarding, @year_established, @notes, @status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (name, lga) DO UPDATE SET
          address=excluded.address, principal=excluded.principal, phone=excluded.phone, email=excluded.email,
          type=excluded.type, category=excluded.category, boarding=excluded.boarding,
-         lga_id=excluded.lga_id, year_established=excluded.year_established, updated_at=datetime('now')`
-    );
-    const exists = db.prepare('SELECT id FROM schools WHERE name = ? AND lga = ?');
+         lga_id=excluded.lga_id, year_established=excluded.year_established, updated_at=CURRENT_TIMESTAMP`;
 
-    const run = db.transaction(function () {
-      rows.forEach(function (row, i) {
-        const parsed = readSchoolBody(row);
+    await db.withTransaction(async function (tx) {
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const parsed = await readSchoolBody(row);
         if (parsed.errors.length) {
           report.failed += 1;
           if (report.errors.length < 60) report.errors.push({ row: i + 2, error: parsed.errors[0] });
-          return;
+          continue;
         }
         const v = parsed.value;
         /* A row naming another LGA is refused outright rather than rewritten. */
-        if (!scope.canCreateSchool(req.user, v.lga_id)) {
+        if (!(await scope.canCreateSchool(req.user, v.lga_id))) {
           report.failed += 1;
           if (report.errors.length < 60) {
             report.errors.push({ row: i + 2, error: 'Outside your scope: ' + v.lga + '.' });
           }
-          return;
+          continue;
         }
-        const had = exists.get(v.name, v.lga);
+        const had = await tx.get('SELECT id FROM schools WHERE name = ? AND lga = ?', [v.name, v.lga]);
         if (dryRun) {
           if (had) report.updated += 1; else report.created += 1;
-          return;
+          continue;
         }
-        insert.run(v);
+        await tx.run(UPSERT_SQL, [
+          v.name, v.lga, v.lga_id, v.address, v.principal, v.phone, v.email,
+          v.type, v.category, v.boarding, v.year_established, v.notes, v.status
+        ]);
         if (had) report.updated += 1; else report.created += 1;
-      });
+      }
     });
-    run();
 
-    if (!dryRun) db.logAudit(req.user, 'school.import', 'school', '', report, req);
+    if (!dryRun) await db.logAudit(req.user, 'school.import', 'school', '', report, req);
     return res.json({ ok: true, report: report });
   }), handleErrors);
 
