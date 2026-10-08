@@ -107,7 +107,7 @@ router.get('/audience', asyncHandler(async function (req, res) {
 
 /* ------------------------------ templates ----------------------------- */
 router.get('/templates', asyncHandler(async function (req, res) {
-  const templates = await db.query('SELECT * FROM sms_templates ORDER BY name COLLATE NOCASE');
+  const templates = await db.query('SELECT * FROM sms_templates ORDER BY LOWER(name)');
   res.json({
     templates: templates,
     placeholders: ['{{message}}', '{{date}}', '{{time}}', '{{venue}}', '{{school}}', '{{rank}}', '{{name}}']

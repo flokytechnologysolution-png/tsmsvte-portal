@@ -80,7 +80,7 @@ router.post('/notifications/read', requireAuth, asyncHandler(async function (req
 router.get('/export.csv', requireRole('ADMIN'), asyncHandler(async function (req, res) {
   const rows = await db.query(
     `SELECT s.*, u.mail_address FROM staff s LEFT JOIN users u ON u.id = s.user_id
-     ORDER BY s.lga, s.full_name COLLATE NOCASE`
+     ORDER BY s.lga, LOWER(s.full_name)`
   );
   const exportRows = rows.map(function (r) {
     return {
@@ -294,7 +294,7 @@ router.get('/users/list', scope.requireUserList, asyncHandler(async function (re
   const ownerClause = roles.hideOwnerFromSql(req.user);
   if (ownerClause) where.push(ownerClause);
   
-  const sc = scope.userWhere(req.user, 'u');
+  const sc = await scope.userWhere(req.user, 'u');
   if (sc.sql) { where.push(sc.sql); params.push.apply(params, sc.params); }
   
   const whereSql = where.length ? ' WHERE ' + where.filter(Boolean).join(' AND ') : '';
@@ -302,14 +302,14 @@ router.get('/users/list', scope.requireUserList, asyncHandler(async function (re
     'SELECT u.id, u.email, u.full_name, u.role, u.status, u.phone, u.mail_address,' +
     ' u.lga_id, u.school_id, u.last_login_at, u.created_at FROM users u' + whereSql +
     " ORDER BY CASE u.role WHEN 'OWNER' THEN 0 WHEN 'ADMIN' THEN 1 WHEN 'LGA_OFFICER' THEN 2 " +
-    "WHEN 'SCHOOL_ADMIN' THEN 3 WHEN 'EDITOR' THEN 4 ELSE 5 END, u.full_name COLLATE NOCASE",
+    "WHEN 'SCHOOL_ADMIN' THEN 3 WHEN 'EDITOR' THEN 4 ELSE 5 END, LOWER(u.full_name)",
     params
   );
   res.json({
     users: rows,
     roles: roles.ROLES,
     grantable_roles: roles.grantableRoles(req.user),
-    scope: scope.scopeOf(req.user).kind
+    scope: (await scope.scopeOf(req.user)).kind
   });
 }));
 
@@ -367,7 +367,7 @@ router.put('/users/:id([0-9]+)', scope.requireUserConsole, writeLimiter, require
   const id = toIntOrNull(req.params.id);
   const user = id ? await db.get('SELECT * FROM users WHERE id = ?', [id]) : null;
   if (!user) return res.status(404).json({ error: 'User not found' });
-  if (!scope.canViewUser(req.user, user)) return res.status(404).json({ error: 'User not found' });
+  if (!(await scope.canViewUser(req.user, user))) return res.status(404).json({ error: 'User not found' });
   if (user.id === req.user.id) return res.status(409).json({ error: 'You cannot change your own role or status here.' });
   if (user.role === 'OWNER') return res.status(404).json({ error: 'Not found' });
   if (user.role === 'ADMIN' && req.user.role !== 'OWNER') {
@@ -419,7 +419,7 @@ router.post('/users/:id([0-9]+)/reset-token', scope.requireUserConsole, writeLim
   const id = toIntOrNull(req.params.id);
   const user = id ? await db.get('SELECT * FROM users WHERE id = ?', [id]) : null;
   if (!user) return res.status(404).json({ error: 'User not found' });
-  if (!scope.canViewUser(req.user, user)) return res.status(404).json({ error: 'User not found' });
+  if (!(await scope.canViewUser(req.user, user))) return res.status(404).json({ error: 'User not found' });
   if (user.role === 'ADMIN' && req.user.role !== 'OWNER') {
     return res.status(403).json({ error: 'Only the owner can reset an administrator password.' });
   }
