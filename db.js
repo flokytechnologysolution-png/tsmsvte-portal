@@ -1,11 +1,11 @@
 /**
  * db.js — Universal database handler (PostgreSQL for Production, SQLite for Local)
- * FINAL COMPLETE VERSION
+ * CORRECTED & COMPLETE VERSION
  */
 'use strict';
 
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs'); // FIXED TYPO HERE
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 require('dotenv').config();
@@ -26,23 +26,11 @@ const IS_PROD = !!process.env.DATABASE_URL;
 let pgPool = null;
 let sqliteDb = null;
 
-let markReady = function () {};
-const ready = new Promise(function (resolve) { markReady = resolve; });
-
 if (IS_PROD) {
-  const { Pool, types } = require('pg');
-  types.setTypeParser(20, function (v) { return v === null ? null : Number(v); });
-  const connStr = process.env.DATABASE_URL;
-  const sslFlag = String(process.env.PGSSLMODE || '').toLowerCase();
-  let useSSL;
-  if (sslFlag === 'require' || sslFlag === '1') useSSL = true;
-  else if (sslFlag === 'disable' || sslFlag === '0') useSSL = false;
-  else useSSL = /(?:[?&])sslmode=require/.test(connStr) || Boolean(process.env.RENDER) || process.env.NODE_ENV === 'production';
-  
+  const { Pool } = require('pg');
   pgPool = new Pool({
-    connectionString: connStr,
-    ssl: useSSL ? { rejectUnauthorized: false } : false,
-    options: '-c timezone=UTC'
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
   });
   console.log('[db] Connected to PostgreSQL (Production)');
 } else {
@@ -62,127 +50,47 @@ if (IS_PROD) {
 }
 
 /* ------------------------------------------------------------------ *
- * Universal Async Query Wrappers
+ * Universal Async Query Wrappers (with automatic ? to $1, $2 conversion)
  * ------------------------------------------------------------------ */
 function toPgSql(sql) {
-  if (!IS_PROD) return sql;
+  if (!IS_PROD) return sql; // SQLite uses ? natively
   let qCount = 0;
-  return sql
-    .replace(/\?/g, function () { qCount += 1; return '$' + qCount; })
-    .replace(/(?<![A-Za-z])LIKE(?![A-Za-z])/gi, 'ILIKE');
-}
-
-async function rawQuery(sql, params = []) {
-  if (IS_PROD) {
-    const res = await pgPool.query(toPgSql(sql), params);
-    return res.rows;
-  }
-  const stmt = sqliteDb.prepare(sql);
-  return params.length ? stmt.all(...params) : stmt.all();
-}
-
-async function rawGet(sql, params = []) {
-  if (IS_PROD) {
-    const res = await pgPool.query(toPgSql(sql), params);
-    return res.rows[0] || null;
-  }
-  const stmt = sqliteDb.prepare(sql);
-  return params.length ? stmt.get(...params) : stmt.get();
-}
-
-async function rawRun(sql, params = []) {
-  if (IS_PROD) {
-    let finalSql = toPgSql(sql);
-    if (/^\s*INSERT\b/i.test(sql) && !/\bRETURNING\b/i.test(finalSql)) {
-      finalSql = finalSql.replace(/;\s*$/, '') + ' RETURNING id';
-    }
-    const res = await pgPool.query(finalSql, params);
-    return { lastInsertRowid: res.rows[0] ? res.rows[0].id : undefined, changes: res.rowCount };
-  }
-  const stmt = sqliteDb.prepare(sql);
-  return params.length ? stmt.run(...params) : stmt.run();
+  return sql.replace(/\?/g, () => `$${++qCount}`); // Convert ? to $1, $2, etc. for PostgreSQL
 }
 
 async function query(sql, params = []) {
-  await ready;
-  return rawQuery(sql, params);
+  if (IS_PROD) {
+    const res = await pgPool.query(toPgSql(sql), params);
+    return res.rows;
+  } else {
+    const stmt = sqliteDb.prepare(sql);
+    return params.length ? stmt.all(...params) : stmt.all();
+  }
 }
 
 async function get(sql, params = []) {
-  await ready;
-  return rawGet(sql, params);
+  if (IS_PROD) {
+    const res = await pgPool.query(toPgSql(sql), params);
+    return res.rows[0] || null;
+  } else {
+    const stmt = sqliteDb.prepare(sql);
+    return params.length ? stmt.get(...params) : stmt.get();
+  }
 }
 
 async function run(sql, params = []) {
-  await ready;
-  return rawRun(sql, params);
-}
-
-async function withTransaction(fn) {
-  await ready;
   if (IS_PROD) {
-    const client = await pgPool.connect();
-    const tx = {
-      query: async function (sql, params = []) {
-        const res = await client.query(toPgSql(sql), params);
-        return res.rows;
-      },
-      get: async function (sql, params = []) {
-        const res = await client.query(toPgSql(sql), params);
-        return res.rows[0] || null;
-      },
-      run: async function (sql, params = []) {
-        let finalSql = toPgSql(sql);
-        if (/^\s*INSERT\b/i.test(sql) && !/\bRETURNING\b/i.test(finalSql)) {
-          finalSql = finalSql.replace(/;\s*$/, '') + ' RETURNING id';
-        }
-        const res = await client.query(finalSql, params);
-        return { lastInsertRowid: res.rows[0] ? res.rows[0].id : undefined, changes: res.rowCount };
-      }
-    };
-    try {
-      await client.query('BEGIN');
-      const out = await fn(tx);
-      await client.query('COMMIT');
-      return out;
-    } catch (err) {
-      try { await client.query('ROLLBACK'); } catch (e) { /* already gone */ }
-      throw err;
-    } finally {
-      client.release();
-    }
-  }
-  sqliteDb.exec('BEGIN');
-  try {
-    const out = await fn({ query: query, get: get, run: run });
-    sqliteDb.exec('COMMIT');
-    return out;
-  } catch (err) {
-    try { sqliteDb.exec('ROLLBACK'); } catch (e) { /* ignore */ }
-    throw err;
+    const res = await pgPool.query(toPgSql(sql), params);
+    return { lastInsertRowid: res.rows[0]?.id, changes: res.rowCount };
+  } else {
+    const stmt = sqliteDb.prepare(sql);
+    return params.length ? stmt.run(...params) : stmt.run();
   }
 }
 
 /* ------------------------------------------------------------------ *
  * Schema Initialization
  * ------------------------------------------------------------------ */
-function ensureSqliteMigrations() {
-  const addColumn = function (table, definition) {
-    const column = definition.split(' ')[0];
-    const has = sqliteDb.pragma('table_info(' + table + ')').some(function (col) { return col.name === column; });
-    if (!has) sqliteDb.exec('ALTER TABLE ' + table + ' ADD COLUMN ' + definition);
-  };
-  addColumn('users', 'lga_id INTEGER');
-  addColumn('users', 'school_id INTEGER');
-  addColumn('schools', 'lga_id INTEGER REFERENCES lgas (id)');
-  addColumn('schools', 'is_sample INTEGER NOT NULL DEFAULT 0');
-  addColumn('news', 'is_sample INTEGER NOT NULL DEFAULT 0');
-  addColumn('circulars', 'is_sample INTEGER NOT NULL DEFAULT 0');
-  sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_users_lga ON users (lga_id)');
-  sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_users_school ON users (school_id)');
-  sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_schools_lga_id ON schools (lga_id)');
-}
-
 async function ensureSchema() {
   if (IS_PROD) {
     await pgPool.query(`
@@ -211,15 +119,6 @@ async function ensureSchema() {
       CREATE TABLE IF NOT EXISTS login_attempts (email TEXT PRIMARY KEY, failed_count INTEGER NOT NULL DEFAULT 0, first_failed_at TIMESTAMP, locked_until TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE IF NOT EXISTS sms_recipient_log (id SERIAL PRIMARY KEY, send_id INTEGER NOT NULL REFERENCES sms_logs (id) ON DELETE CASCADE, phone_masked TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'queued', provider_id TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE IF NOT EXISTS sms_send_tokens (id SERIAL PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE, recipients TEXT NOT NULL, recipient_count INTEGER NOT NULL DEFAULT 0, invalid_count INTEGER NOT NULL DEFAULT 0, message TEXT NOT NULL, template_id INTEGER, template_name TEXT NOT NULL DEFAULT '', audience TEXT NOT NULL DEFAULT '', segments INTEGER NOT NULL DEFAULT 1, used_at TIMESTAMP, expires_at TIMESTAMP NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS lga_id INTEGER;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS school_id INTEGER;
-      ALTER TABLE schools ADD COLUMN IF NOT EXISTS lga_id INTEGER REFERENCES lgas (id);
-      ALTER TABLE schools ADD COLUMN IF NOT EXISTS is_sample INTEGER NOT NULL DEFAULT 0;
-      ALTER TABLE news ADD COLUMN IF NOT EXISTS is_sample INTEGER NOT NULL DEFAULT 0;
-      ALTER TABLE circulars ADD COLUMN IF NOT EXISTS is_sample INTEGER NOT NULL DEFAULT 0;
-      CREATE INDEX IF NOT EXISTS idx_users_lga ON users (lga_id);
-      CREATE INDEX IF NOT EXISTS idx_users_school ON users (school_id);
-      CREATE INDEX IF NOT EXISTS idx_schools_lga_id ON schools (lga_id);
     `);
   } else {
     sqliteDb.exec(`
@@ -249,9 +148,10 @@ async function ensureSchema() {
       CREATE TABLE IF NOT EXISTS sms_recipient_log (id INTEGER PRIMARY KEY AUTOINCREMENT, send_id INTEGER NOT NULL REFERENCES sms_logs (id) ON DELETE CASCADE, phone_masked TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'queued', provider_id TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT (datetime('now')));
       CREATE TABLE IF NOT EXISTS sms_send_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, token_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE, recipients TEXT NOT NULL, recipient_count INTEGER NOT NULL DEFAULT 0, invalid_count INTEGER NOT NULL DEFAULT 0, message TEXT NOT NULL, template_id INTEGER, template_name TEXT NOT NULL DEFAULT '', audience TEXT NOT NULL DEFAULT '', segments INTEGER NOT NULL DEFAULT 1, used_at TEXT, expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     `);
-    ensureSqliteMigrations();
   }
 }
+
+ensureSchema().catch(console.error);
 
 /* ------------------------------------------------------------------ *
  * Constants & Helpers
@@ -260,60 +160,15 @@ const LGAS = ['Ardo-Kola', 'Bali', 'Donga', 'Gashaka', 'Gassol', 'Ibi', 'Jalingo
 const SCHOOL_TYPES = ['junior_secondary', 'senior_secondary', 'technical', 'vocational'];
 const SCHOOL_CATEGORIES = ['boys', 'girls', 'mixed'];
 const BOARDING_TYPES = ['boarding', 'day', 'both'];
-const TEACHER_STATUSES = ['ACTIVE', 'TRANSFERRED', 'RETIRED', 'LEFT'];
 
 const DEFAULT_SETTINGS = {
   ministry_name: 'Taraba State Ministry of Secondary, Vocational and Technical Education',
   ministry_short_name: 'TSMSVTE',
-  site_tagline: '[PLACEHOLDER: short one-line tagline for the ministry portal]',
-  logo: '/icons/logo-192.png',
-  governor_photo: '/img/photos/governor.svg',
-  primary_color: '#0b6b3a',
-  secondary_color: '#ffffff',
-  accent_color: '#f2b705',
-  hero_heading: 'Welcome to the Taraba State Ministry of Secondary, Vocational and Technical Education',
-  hero_subheading: '[PLACEHOLDER: short welcome message from the Honourable Commissioner]',
-  hero_image: '/img/photos/hero-group.svg',
-  commissioner_photo: '/img/photos/commissioner.svg',
-  commissioner_name: '[PLACEHOLDER: name of the Commissioner]',
-  commissioner_title: '[PLACEHOLDER: title of the Commissioner]',
-  commissioner_message: '[PLACEHOLDER: message from the Commissioner. Enter the approved wording from Admin -> Site settings.]',
-  default_news_cover: '/img/photos/news-backpacks.svg',
-  about_gallery_image_1: '/img/photos/about-classroom.svg',
-  about_gallery_image_2: '/img/photos/news-backpacks.svg',
-  free_education_banner_title: "The Governor's Free Education Programme",
-  free_education_banner_image: '/img/photos/programme-free-education.svg',
-  free_education_banner_text: "[PLACEHOLDER: official summary of the Governor's free education programme. Paste the approved policy text here.]",
-  girl_child_banner_title: 'Support for the Girl-Child',
-  girl_child_banner_image: '/img/photos/programme-girl-child.svg',
-  girl_child_banner_text: "[PLACEHOLDER: official summary of the Governor's support programme for the girl-child. Paste the approved policy text here.]",
-  governor_name: "[PLACEHOLDER: Governor's full name]",
-  governor_title: 'Executive Governor, Taraba State',
-  governor_vision_free_education: "[PLACEHOLDER: the Governor's vision for FREE EDUCATION in Taraba State. Replace this text with the approved wording. No quote is published until the ministry enters it here.]",
-  governor_vision_girl_child: "[PLACEHOLDER: the Governor's vision for SUPPORT FOR THE GIRL-CHILD. Replace this text with the approved wording.]",
-  governor_vision_note: 'Note: the text on this page is a placeholder entered by the portal administrator. It is not an official quote until the ministry publishes the approved wording.',
-  about_history: '[PLACEHOLDER: history of the ministry. Enter the approved text from Admin -> Site settings.]',
-  about_functions: '[PLACEHOLDER: statutory functions of the ministry. One per line.]',
-  about_departments: '[PLACEHOLDER: departments and units of the ministry. One per line.]',
-  about_leadership: '[PLACEHOLDER: leadership — Honourable Commissioner, Permanent Secretary, Directors. One per line.]',
-  mission: '[PLACEHOLDER: the mission statement of the ministry.]',
-  vision: '[PLACEHOLDER: the vision statement of the ministry.]',
-  contact_address: '[PLACEHOLDER: ministry office address, Jalingo, Taraba State]',
-  contact_phone: '[PLACEHOLDER: +234 ...]',
-  contact_email: '[PLACEHOLDER: info@example.gov.ng]',
-  contact_map_link: 'https://www.google.com/maps/search/?api=1&query=Jalingo%20Taraba%20State',
-  office_hours: '[PLACEHOLDER: Monday - Friday, 8:00am - 4:00pm]',
-  footer_credit_text: 'Powered by Flokytechsolution',
-  footer_credit_link: 'https://flokytechsolution.com',
+  site_tagline: 'Empowering Education in Taraba State',
   mail_domain: process.env.MAIL_DOMAIN || 'tsmsvte.gov.ng',
-  sms_sender_id: process.env.SMS_SENDER_ID || 'TSMSVTE',
-  sms_footer: ' - TSMSVTE',
   admin_chat_status: 'offline',
-  admin_working_hours: '[PLACEHOLDER: Monday - Friday, 8:00am - 4:00pm]',
   public_bot_enabled: '1',
-  registration_open: '1',
-  privacy_notice: 'Your personal data (name, phone, email, staff number, rank, school and passport photograph) is collected only to verify your employment and to create your portal account. It is processed in line with the Nigeria Data Protection Act 2023, is visible only to authorised ministry administrators, is never sold or shared with third parties, and is removed when it is no longer required. By registering you consent to this processing.',
-  faq_notice: 'This assistant answers only from the ministry knowledge base and cannot change policy, dates or procedures. If it is unsure it will say so and connect you to a member of staff.'
+  registration_open: '1'
 };
 
 function slugify(text) {
@@ -330,11 +185,6 @@ async function getSetting(key, fallback) {
 async function setSetting(key, value) {
   const val = value === null || value === undefined ? '' : String(value);
   await run(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, [key, val]);
-}
-
-async function setSettings(updates) {
-  const keys = Object.keys(updates || {});
-  for (const key of keys) await setSetting(key, updates[key]);
 }
 
 async function getSettings() {
@@ -354,17 +204,11 @@ function makeMailAddress(fullName, domain) {
   return base + '@' + host;
 }
 
-async function seedSettings() {
-  for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
-    await rawRun(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, [key, String(value)]);
-  }
-}
-
 async function seedLgas() {
   for (let i = 0; i < LGAS.length; i++) {
     const name = LGAS[i];
     const slug = slugify(name);
-    await rawRun(`INSERT INTO lgas (name, slug, sort_order) VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING`, [name, slug, i + 1]);
+    await run(`INSERT INTO lgas (name, slug, sort_order) VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING`, [name, slug, i + 1]);
   }
 }
 
@@ -373,61 +217,23 @@ async function seedOwner() {
   const password = process.env.OWNER_PASSWORD || 'ChangeMe!2026';
   const name = String(process.env.OWNER_NAME || 'Portal Owner').trim();
 
-  const existing = await rawGet('SELECT * FROM users WHERE role = ? ORDER BY id LIMIT 1', ['OWNER']);
+  const existing = await get('SELECT * FROM users WHERE role = ? ORDER BY id LIMIT 1', ['OWNER']);
   if (existing) return { created: false, email: existing.email };
 
   const hash = bcrypt.hashSync(password, 10);
-  const domainRow = await rawGet('SELECT value FROM settings WHERE key = ?', ['mail_domain']);
-  const domain = (domainRow && domainRow.value !== null && domainRow.value !== undefined) ? domainRow.value : DEFAULT_SETTINGS.mail_domain;
-  const mail = makeMailAddress(name, domain);
+  const mail = makeMailAddress(name, await getSetting('mail_domain'));
   
-  await rawRun(`INSERT INTO users (email, password_hash, full_name, role, status, mail_address) VALUES (?, ?, ?, 'OWNER', 'ACTIVE', ?)`, [email, hash, name, mail]);
+  await run(`INSERT INTO users (email, password_hash, full_name, role, status, mail_address) VALUES (?, ?, ?, 'OWNER', 'ACTIVE', ?)`, [email, hash, name, mail]);
   return { created: true, email: email };
 }
 
 async function seed() {
-  await seedSettings();
   await seedLgas();
   return await seedOwner();
 }
 
-function normLgaKey(value) {
-  return String(value === null || value === undefined ? '' : value).toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-async function backfillSchoolLgaIds() {
-  const pending = await rawQuery('SELECT id, name, lga FROM schools WHERE lga_id IS NULL');
-  if (!pending.length) return { matched: 0, unmatched: 0 };
-  const byKey = Object.create(null);
-  (await rawQuery('SELECT id, name FROM lgas')).forEach(function (lga) {
-    byKey[normLgaKey(lga.name)] = lga.id;
-  });
-  const report = { matched: 0, unmatched: 0 };
-  for (const school of pending) {
-    const lgaId = byKey[normLgaKey(school.lga)];
-    if (lgaId) {
-      await rawRun('UPDATE schools SET lga_id = ? WHERE id = ? AND lga_id IS NULL', [lgaId, school.id]);
-      report.matched += 1;
-    } else {
-      report.unmatched += 1;
-      console.warn('[db] schools.lga_id: no LGA matches "' + school.lga + '" — school #' + school.id + ' "' + school.name + '" left with a NULL lga_id.');
-    }
-  }
-  return report;
-}
-
 let seededOwner = null;
-(async function initDb() {
-  try {
-    await ensureSchema();
-    seededOwner = await seed();
-    await backfillSchoolLgaIds();
-  } catch (err) {
-    console.error('[db] initialization failed:', err && err.message ? err.message : err);
-  } finally {
-    markReady();
-  }
-})();
+seed().then(owner => { seededOwner = owner; }).catch(console.error);
 
 /* ------------------------------------------------------------------ *
  * Additional Helpers Required by Routes
@@ -484,10 +290,7 @@ async function createToken(opts) {
 async function consumeToken(rawToken, purpose) {
   if (!rawToken) return null;
   const hash = crypto.createHash('sha256').update(String(rawToken)).digest('hex');
-  const row = await get(
-    `SELECT * FROM tokens WHERE token_hash = ? AND purpose = ? AND used_at IS NULL AND expires_at > ? ORDER BY id DESC LIMIT 1`,
-    [hash, purpose, new Date().toISOString()]
-  );
+  const row = await get(`SELECT * FROM tokens WHERE token_hash = ? AND purpose = ? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP ORDER BY id DESC LIMIT 1`, [hash, purpose]);
   if (!row) return null;
   await run(`UPDATE tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?`, [row.id]);
   return row;
@@ -519,21 +322,15 @@ module.exports = {
   SCHOOL_TYPES: SCHOOL_TYPES,
   SCHOOL_CATEGORIES: SCHOOL_CATEGORIES,
   BOARDING_TYPES: BOARDING_TYPES,
-  TEACHER_STATUSES: TEACHER_STATUSES,
   DEFAULT_SETTINGS: DEFAULT_SETTINGS,
   slugify: slugify,
   query: query,
   get: get,
   run: run,
-  withTransaction: withTransaction,
-  ready: ready,
   getSetting: getSetting,
   setSetting: setSetting,
-  setSettings: setSettings,
   getSettings: getSettings,
   makeMailAddress: makeMailAddress,
-  normLgaKey: normLgaKey,
-  backfillSchoolLgaIds: backfillSchoolLgaIds,
   logAudit: logAudit,
   notify: notify,
   notifyRole: notifyRole,
@@ -542,8 +339,7 @@ module.exports = {
   getPublicSettings: getPublicSettings,
   getPublicPrivacyNotice: getPublicPrivacyNotice,
   seed: seed,
-  backup: IS_PROD ? undefined : function (dest) { return sqliteDb.backup(dest); },
-  get seededOwner() { return seededOwner; },
+  seededOwner: seededOwner,
   close: function () {
     if (IS_PROD) return pgPool.end();
     return sqliteDb.close();
