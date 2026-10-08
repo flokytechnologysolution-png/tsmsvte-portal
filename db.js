@@ -93,9 +93,13 @@ async function rawGet(sql, params = []) {
 async function rawRun(sql, params = []) {
   if (IS_PROD) {
     let finalSql = toPgSql(sql);
-    if (/^\s*INSERT\b/i.test(sql) && !/\bRETURNING\b/i.test(finalSql)) {
+    
+    // FIX: Do not append RETURNING id for tables that don't have an 'id' column (like login_attempts and settings)
+    const hasIdColumn = !/INTO\s+(login_attempts|settings)\b/i.test(sql);
+    if (/^\s*INSERT\b/i.test(sql) && !/\bRETURNING\b/i.test(finalSql) && hasIdColumn) {
       finalSql = finalSql.replace(/;\s*$/, '') + ' RETURNING id';
     }
+    
     const res = await pgPool.query(finalSql, params);
     return { lastInsertRowid: res.rows[0] ? res.rows[0].id : undefined, changes: res.rowCount };
   }
