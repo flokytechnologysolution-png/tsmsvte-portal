@@ -65,9 +65,7 @@ router.get('/', asyncHandler(async function (req, res) {
   const params = [];
   if (!showAll) where.push("status = 'published'");
   if (!showAll) {
-    /* event_date is TEXT (YYYY-MM-DD); PostgreSQL will not compare text with
-     * the date type directly, and CAST() works on both engines. */
-    where.push(showPast ? 'event_date < CAST(CURRENT_DATE AS TEXT)' : 'event_date >= CAST(CURRENT_DATE AS TEXT)');
+    where.push(showPast ? "event_date < CURRENT_DATE" : "event_date >= CURRENT_DATE");
   }
 
   const q = clean(req.query.q || '').slice(0, 80);

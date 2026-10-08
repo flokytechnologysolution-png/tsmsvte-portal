@@ -271,8 +271,8 @@ router.get('/transfer', asyncHandler(async function (req, res) {
   const hash = crypto.createHash('sha256').update(token).digest('hex');
   const row = await db.get(
     `SELECT * FROM tokens WHERE token_hash = ? AND purpose = 'ownership_transfer'
-     AND used_at IS NULL AND expires_at > ?`,
-    [hash, new Date().toISOString()]
+     AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`,
+    [hash]
   );
   if (!row) return res.status(400).json({ error: 'This transfer invitation is not valid or has expired.' });
   const current = await db.get("SELECT full_name FROM users WHERE role = 'OWNER' LIMIT 1");
@@ -300,8 +300,8 @@ router.post('/transfer/accept', loginLimiter, asyncHandler(async function (req, 
   const hash = crypto.createHash('sha256').update(token).digest('hex');
   const invitation = await db.get(
     `SELECT * FROM tokens WHERE token_hash = ? AND purpose = 'ownership_transfer'
-     AND used_at IS NULL AND expires_at > ?`,
-    [hash, new Date().toISOString()]
+     AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`,
+    [hash]
   );
   if (!invitation) return res.status(400).json({ error: 'This transfer invitation is not valid or has expired.' });
 

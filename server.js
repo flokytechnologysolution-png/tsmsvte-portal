@@ -82,20 +82,6 @@ app.get('/api/health', function (req, res) {
   res.json({ ok: true, app: 'taraba-edu-portal', time: new Date().toISOString() });
 });
 
-/* Ops / Render probe: a real round-trip to the database (the lgas table is
- * seeded on first boot, so this also proves the schema exists).  Answers 503
- * when the database is unreachable, so a bad DATABASE_URL is visible at once. */
-app.get('/healthz', async function (req, res) {
-  try {
-    await db.ready;
-    await db.get('SELECT COUNT(*) AS n FROM lgas');
-    res.json({ status: 'ok', database: 'up', time: new Date().toISOString() });
-  } catch (err) {
-    console.error('[healthz] database check failed:', err && err.message);
-    res.status(503).json({ status: 'degraded', database: 'down' });
-  }
-});
-
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/schools', require('./routes/schools'));

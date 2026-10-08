@@ -92,7 +92,7 @@ router.get('/recipients', asyncHandler(async function (req, res) {
   const q = clean(req.query.q || '').toLowerCase().slice(0, 80);
 
   if (type === 'schools') {
-    const sc = await scope.schoolWhere(req.user, 's');
+    const sc = scope.schoolWhere(req.user, 's');
     const where = sc.sql ? (' WHERE ' + sc.sql) : '';
     const schools = await db.query(
       'SELECT s.id, s.name, s.lga FROM schools s' + where + ' ORDER BY s.name LIMIT 2000',

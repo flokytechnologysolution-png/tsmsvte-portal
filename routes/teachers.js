@@ -131,7 +131,7 @@ async function staffNoTaken(staffNo, exceptId) {
 async function checkTargetSchool(user, schoolId) {
   const school = await db.get('SELECT * FROM schools WHERE id = ?', [schoolId]);
   if (!school) return { error: { status: 422, message: 'That school does not exist.' } };
-  if (!(await scope.canViewSchool(user, school))) return { error: { status: 404, message: 'School not found' } };
+  if (!scope.canViewSchool(user, school)) return { error: { status: 404, message: 'School not found' } };
   return { school: school };
 }
 
@@ -223,7 +223,7 @@ router.get('/', requireAuth, scope.requireTeacherConsole, asyncHandler(async fun
 
   const where = filt.where.slice();
   const params = filt.params.slice();
-  const sc = await scope.teacherWhere(req.user, 't');
+  const sc = scope.teacherWhere(req.user, 't');
   if (sc.sql) { where.push(sc.sql); params.push.apply(params, sc.params); }
   const clause = where.length ? (' WHERE ' + where.join(' AND ')) : '';
 
@@ -247,7 +247,7 @@ router.get('/', requireAuth, scope.requireTeacherConsole, asyncHandler(async fun
 }));
 
 router.get('/options', requireAuth, scope.requireTeacherConsole, asyncHandler(async function (req, res) {
-  const sc = await scope.schoolWhere(req.user, 's');
+  const sc = scope.schoolWhere(req.user, 's');
   const where = sc.sql ? (' WHERE ' + sc.sql) : '';
   const schools = await db.query(
     'SELECT s.id, s.name, s.lga FROM schools s' + where + ' ORDER BY s.name LIMIT 2000',
@@ -262,7 +262,7 @@ router.get('/export.csv', requireAuth, scope.requireTeacherConsole, asyncHandler
   if (filt.error) return res.status(422).json({ error: filt.error });
   const where = filt.where.slice();
   const params = filt.params.slice();
-  const sc = await scope.teacherWhere(req.user, 't');
+  const sc = scope.teacherWhere(req.user, 't');
   if (sc.sql) { where.push(sc.sql); params.push.apply(params, sc.params); }
   const clause = where.length ? (' WHERE ' + where.join(' AND ')) : '';
   const rows = await db.query(
