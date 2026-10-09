@@ -701,3 +701,23 @@ table.data td.actions { white-space: nowrap; }
 .contact-row dt{font-weight:600;color:var(--primary)}
 .contact-row dd{margin:0}
 @media (max-width:560px){.contact-row{grid-template-columns:1fr;gap:2px}}
+
+/* Hero: big governor photo under the header, fixed so it stays while the page scrolls */
+.hero.hero-parallax{position:relative;display:flex;align-items:center;text-align:left;
+  min-height:clamp(460px,78vh,760px);padding:72px 0;color:#fff;
+  background-color:var(--primary-dark,#0b4d2a);
+  background-image:url('/img/photos/governor-hero.jpg');
+  background-size:cover;background-position:var(--hero-pos,50% 8%);
+  background-repeat:no-repeat;background-attachment:fixed;overflow:hidden}
+.hero.hero-parallax::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.45) 45%,rgba(0,0,0,.08) 100%)}
+.hero.hero-parallax>.container{position:relative;z-index:1;will-change:transform}
+.hero.hero-parallax h1{color:#fff;font-size:clamp(2rem,5vw,4rem);line-height:1.08;max-width:14em;
+  text-shadow:0 2px 18px rgba(0,0,0,.45)}
+.hero.hero-parallax .sub{color:rgba(255,255,255,.92);max-width:38em}
+.hero.hero-parallax .row{justify-content:flex-start}
+@media (hover:none),(max-width:820px){
+  .hero.hero-parallax{background-attachment:scroll;background-position:var(--hero-pos-mobile,60% 12%)}
+  .hero.hero-parallax::before{background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,.72))}
+}
+@media (prefers-reduced-motion:reduce){.hero.hero-parallax{background-attachment:scroll}}
