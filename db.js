@@ -359,8 +359,13 @@ function makeMailAddress(fullName, domain) {
 }
 
 async function seedSettings() {
+  // Seed defaults ONLY for keys that don't exist yet.  seedSettings() runs on
+  // every boot (initDb -> seed), so an unconditional "ON CONFLICT DO UPDATE"
+  // would clobber any value the admin set via Site settings on each restart /
+  // redeploy.  DO NOTHING preserves user edits while still backfilling brand-new
+  // default keys — mirroring seedLgas()/seedOwner() above.
   for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
-    await rawRun(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, [key, String(value)]);
+    await rawRun(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT (key) DO NOTHING`, [key, String(value)]);
   }
 }
 
