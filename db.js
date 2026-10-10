@@ -275,7 +275,7 @@ const DEFAULT_SETTINGS = {
   primary_color: '#0b6b3a',
   secondary_color: '#ffffff',
   accent_color: '#f2b705',
-  hero_heading: 'Welcome to the Taraba State Ministry of Secondary, Vocational and Technical Education',
+  hero_heading: 'Welcome to the Taraba State Ministry of Secondary, Vocational and Technical Education official portal.',
   hero_subheading: '',
   hero_image: '/img/photos/hero-group.svg',
   commissioner_photo: '/img/photos/commissioner.svg',
@@ -307,7 +307,14 @@ const DEFAULT_SETTINGS = {
   contact_email: '',
   contact_map_link: '',
   office_hours: '',
-  footer_credit_text: 'Powered by Flokytechsolution',
+  social_facebook: '',
+  social_x: '',
+  social_instagram: '',
+  social_linkedin: '',
+  social_youtube: '',
+  social_whatsapp: '',
+  social_tiktok: '',
+  footer_credit_text: 'Powered by Floky Technology Solution',
   footer_credit_link: 'https://flokytechsolution.com',
   mail_domain: process.env.MAIL_DOMAIN || 'tsmsvte.gov.ng',
   sms_sender_id: process.env.SMS_SENDER_ID || 'TSMSVTE',
@@ -403,6 +410,14 @@ async function seedSettings() {
   // Clear the default Google Maps search only while it is still that placeholder.
   await rawRun(
     `UPDATE settings SET value = '' WHERE key = 'contact_map_link' AND value = 'https://www.google.com/maps/search/?api=1&query=Jalingo%20Taraba%20State'`,
+    []
+  );
+
+  // Fix the developer credit spacing only where it still has the old, unspaced
+  // wording. This is the portal's own credit (not ministry content), so it is
+  // safe to normalise; a value someone has customised is left untouched.
+  await rawRun(
+    `UPDATE settings SET value = 'Powered by Floky Technology Solution' WHERE key = 'footer_credit_text' AND value = 'Powered by Flokytechsolution'`,
     []
   );
 }
