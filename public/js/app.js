@@ -428,6 +428,37 @@
     }
     contactItems.push('<li><a href="/register.html">Staff registration</a></li>');
     contactItems.push('<li><a href="/register-school.html">Register a school</a></li>');
+    /* Social buttons: each is shown only when the ministry has entered that
+     * URL in Admin -> Site settings, so an empty handle never renders a dead
+     * link. Icons are inline SVG (CSP-safe, no outside image links). */
+    const social = [
+      ['social_facebook', 'Facebook', 'Facebook',
+        '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M13.5 21v-7h2.4l.4-2.8h-2.8V9.4c0-.8.2-1.4 1.4-1.4h1.5V5.5c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.3-3.7 3.8v2H8.2V14h2.3v7h3z"/></svg>'],
+      ['social_x', 'X (Twitter)', 'X',
+        '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M17.5 3h3l-6.6 7.6L21.5 21h-5.3l-4.2-5.5L7 21H4l7-8L3 3h5.4l3.9 5.1L17.5 3zm-1 16h1.6L7.6 4.7H5.9L16.5 19z"/></svg>'],
+      ['social_instagram', 'Instagram', 'Instagram',
+        '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M12 2.2c-2.7 0-3 0-4.1.1-1 0-1.7.2-2.3.4-.6.3-1.1.6-1.6 1.1S3.2 4.9 3 5.5c-.2.6-.4 1.3-.4 2.3C2.5 9 2.5 9.3 2.5 12s0 3 .1 4.1c0 1 .2 1.7.4 2.3.3.6.6 1.1 1.1 1.6s1 .8 1.6 1.1c.6.2 1.3.4 2.3.4 1.1.1 1.4.1 4.1.1s3 0 4.1-.1c1 0 1.7-.2 2.3-.4.6-.3 1.1-.6 1.6-1.1s.8-1 1.1-1.6c.2-.6.4-1.3.4-2.3.1-1.1.1-1.4.1-4.1s0-3-.1-4.1c0-1-.2-1.7-.4-2.3-.3-.6-.6-1.1-1.1-1.6s-1-.8-1.6-1.1c-.6-.2-1.3-.4-2.3-.4-1.1-.1-1.4-.1-4.1-.1zm0 1.8c2.7 0 2.9 0 4 .1.8 0 1.2.2 1.5.3.4.1.6.3.9.6.3.3.5.5.6.9.1.3.3.7.3 1.5.1 1 .1 1.3.1 4s0 2.9-.1 4c0 .8-.2 1.2-.3 1.5-.1.4-.3.6-.6.9-.3.3-.5.5-.9.6-.3.1-.7.3-1.5.3-1 .1-1.3.1-4 .1s-2.9 0-4-.1c-.8 0-1.2-.2-1.5-.3-.4-.1-.6-.3-.9-.6-.3-.3-.5-.5-.6-.9-.1-.3-.3-.7-.3-1.5-.1-1-.1-1.3-.1-4s0-2.9.1-4c0-.8.2-1.2.3-1.5.1-.4.3-.6.6-.9.3-.3.5-.5.9-.6.3-.1.7-.3 1.5-.3 1-.1 1.3-.1 4-.1zm0 3.1a4.9 4.9 0 100 9.8 4.9 4.9 0 000-9.8zm0 8.1a3.2 3.2 0 110-6.4 3.2 3.2 0 010 6.4zm6.3-8.3a1.1 1.1 0 11-2.3 0 1.1 1.1 0 012.3 0z"/></svg>'],
+      ['social_linkedin', 'LinkedIn', 'LinkedIn',
+        '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M6.9 8.7H4.1V20h2.8V8.7zM5.5 4a1.7 1.7 0 100 3.4 1.7 1.7 0 000-3.4zM20 13.4c0-3-1.6-4.4-3.7-4.4-1.7 0-2.5.9-2.9 1.6V8.7H10.6c0 .8 0 11.3 0 11.3h2.8v-6.3c0-.3 0-.7.1-.9.3-.6.8-1.3 1.8-1.3 1.3 0 1.8 1 1.8 2.4V20H20v-6.6z"/></svg>'],
+      ['social_youtube', 'YouTube', 'YouTube',
+        '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M21.6 7.2c-.2-1-1-1.8-2-2C17.7 4.8 12 4.8 12 4.8s-5.7 0-7.6.4c-1 .2-1.8 1-2 2C2 9.1 2 12 2 12s0 2.9.4 4.8c.2 1 1 1.8 2 2 1.9.4 7.6.4 7.6.4s5.7 0 7.6-.4c1-.2 1.8-1 2-2 .4-1.9.4-4.8.4-4.8s0-2.9-.4-4.8zM10 15.2V8.8l5.5 3.2-5.5 3.2z"/></svg>'],
+      ['social_whatsapp', 'WhatsApp', 'WhatsApp',
+        '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M12 2a9.9 9.9 0 00-8.5 15L2 22l5.2-1.4A9.9 9.9 0 1012 2zm0 1.8a8.1 8.1 0 013.6 15.3l-.4.2-3 .8.8-2.9-.2-.4A8.1 8.1 0 0112 3.8zm-2.3 4c-.2 0-.5.1-.7.3-.3.3-.9 1-.9 2s.7 2.2 1 2.6c.4.5 1.6 2.3 4 3.2 1.9.7 2.3.6 2.8.5.5-.1 1.4-.6 1.6-1.2.2-.6.2-1 .1-1.1-.1-.1-.3-.2-.6-.3l-1.7-.8c-.2-.1-.4-.1-.6.1l-.7.9c-.1.2-.3.2-.5.1-.5-.2-1.5-.6-2.2-1.6-.5-.7-.6-1-.4-1.2.1-.1.5-.6.6-.8.1-.2 0-.4 0-.5l-.7-1.7c-.1-.3-.3-.4-.5-.4h-.3z"/></svg>'],
+      ['social_tiktok', 'TikTok', 'TikTok',
+        '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M16.5 3c.3 2 1.5 3.4 3.5 3.7v2.6c-1.3.1-2.6-.3-3.7-1v5.6c0 3.2-2.4 5.4-5.4 5.2-2.4-.1-4.4-2.1-4.5-4.5-.1-2.7 2.1-5 4.8-4.8v2.7c-.4-.1-.9-.1-1.3.1-1 .3-1.6 1.3-1.4 2.3.2.8.9 1.4 1.7 1.5 1 .1 1.9-.6 1.9-1.6V3h2.6z"/></svg>']
+    ];
+    const socialItems = social.map(function (row) {
+      const url = String(setting(row[0], '')).trim();
+      if (!url) return '';
+      return '<a href="' + esc(url) + '" rel="noopener" target="_blank" title="' + esc(row[1]) + '">' +
+        row[3] + '<span class="visually-hidden">' + esc(row[2]) + '</span></a>';
+    }).join('');
+    const socialBlock = socialItems
+      ? '<div>' +
+          '<h4>Follow us</h4>' +
+          '<div class="footer-social">' + socialItems + '</div>' +
+        '</div>'
+      : '';
     host.innerHTML =
       '<div class="container">' +
         '<div class="footer-grid">' +
@@ -451,6 +482,7 @@
             '<h4>Contact</h4>' +
             '<ul>' + contactItems.join('') + '</ul>' +
           '</div>' +
+          socialBlock +
         '</div>' +
         '<div class="footer-bottom">' +
           '<span>&copy; ' + new Date().getFullYear() + ' ' + esc(setting('ministry_short_name', '')) + '. All rights reserved.</span>' +

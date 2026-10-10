@@ -184,3 +184,62 @@
     watchStats();
   });
 })();
+
+/* ---------------------------------------------------------------------------
+ * Permanent image / message fix (safe).
+ *
+ * Runs after home.js has rendered and repairs two things, but ONLY with real,
+ * non-placeholder values:
+ *   - the commissioner photo and message (#comm-photo / #comm-message), which
+ *     the ministry fills in Admin -> Site settings;
+ *   - news cover images, replacing a missing / .svg / placeholder source with
+ *     a real local photo already shipped in /img/photos/.
+ *
+ * It never shows "[PLACEHOLDER]" text, never un-hides a card the page hides on
+ * purpose, and never points at an outside or invented image. News cards are
+ * injected asynchronously, so the news host is observed for late additions.
+ * Wrapped so a settings/network error can never break the page.
+ * ------------------------------------------------------------------------- */
+(function () {
+  'use strict';
+
+  function isReal(v) {
+    var s = (v === undefined || v === null) ? '' : String(v).trim();
+    return s && !/\[PLACEHOLDER/i.test(s) && !/\.svg(\?|$)/i.test(s);
+  }
+  var NEWS_FALLBACK = '/img/photos/model-school-1.jpg';
+
+  fetch('/api/settings/public')
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      var s = data && data.settings;
+      if (!s) return;
+
+      /* Commissioner photo / message: set only when real values exist. The
+       * commissioner card itself is shown or hidden by the logic above. */
+      var commImg = document.getElementById('comm-photo');
+      if (commImg && isReal(s.commissioner_photo)) commImg.src = s.commissioner_photo;
+
+      var commMsg = document.getElementById('comm-message');
+      if (commMsg && isReal(s.commissioner_message)) commMsg.textContent = s.commissioner_message;
+
+      /* News covers: swap a broken/placeholder source for a real local photo. */
+      var coverFallback = isReal(s.default_news_cover) ? s.default_news_cover : NEWS_FALLBACK;
+      function fixNews() {
+        var imgs = document.querySelectorAll('#home-news .cover img');
+        Array.prototype.forEach.call(imgs, function (img) {
+          var src = img.getAttribute('src') || '';
+          if (!src || /\.svg(\?|$)/i.test(src) || /placeholder/i.test(src)) {
+            img.src = coverFallback;
+            img.style.objectFit = 'cover';
+          }
+        });
+      }
+      fixNews();
+      var host = document.getElementById('home-news');
+      if (host && window.MutationObserver) {
+        new MutationObserver(fixNews).observe(host, { childList: true, subtree: true });
+      }
+    })
+    .catch(function () { /* network/JSON error: leave the page as-is */ });
+})();
