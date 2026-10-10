@@ -269,51 +269,51 @@ const TEACHER_STATUSES = ['ACTIVE', 'TRANSFERRED', 'RETIRED', 'LEFT'];
 const DEFAULT_SETTINGS = {
   ministry_name: 'Taraba State Ministry of Secondary, Vocational and Technical Education',
   ministry_short_name: 'TSMSVTE',
-  site_tagline: '[PLACEHOLDER: short one-line tagline for the ministry portal]',
+  site_tagline: '',
   logo: '/icons/logo-192.png',
   governor_photo: '/img/photos/governor.svg',
   primary_color: '#0b6b3a',
   secondary_color: '#ffffff',
   accent_color: '#f2b705',
   hero_heading: 'Welcome to the Taraba State Ministry of Secondary, Vocational and Technical Education',
-  hero_subheading: '[PLACEHOLDER: short welcome message from the Honourable Commissioner]',
+  hero_subheading: '',
   hero_image: '/img/photos/hero-group.svg',
   commissioner_photo: '/img/photos/commissioner.svg',
-  commissioner_name: '[PLACEHOLDER: name of the Commissioner]',
-  commissioner_title: '[PLACEHOLDER: title of the Commissioner]',
-  commissioner_message: '[PLACEHOLDER: message from the Commissioner. Enter the approved wording from Admin -> Site settings.]',
-  default_news_cover: '/img/photos/news-backpacks.svg',
-  about_gallery_image_1: '/img/photos/about-classroom.svg',
-  about_gallery_image_2: '/img/photos/news-backpacks.svg',
+  commissioner_name: '',
+  commissioner_title: '',
+  commissioner_message: '',
+  default_news_cover: '',
+  about_gallery_image_1: '/img/photos/model-school-1.jpg',
+  about_gallery_image_2: '/img/photos/model-school-2.jpg',
   free_education_banner_title: "The Governor's Free Education Programme",
   free_education_banner_image: '/img/photos/programme-free-education.svg',
-  free_education_banner_text: "[PLACEHOLDER: official summary of the Governor's free education programme. Paste the approved policy text here.]",
+  free_education_banner_text: '',
   girl_child_banner_title: 'Support for the Girl-Child',
   girl_child_banner_image: '/img/photos/programme-girl-child.svg',
-  girl_child_banner_text: "[PLACEHOLDER: official summary of the Governor's support programme for the girl-child. Paste the approved policy text here.]",
-  governor_name: "[PLACEHOLDER: Governor's full name]",
+  girl_child_banner_text: '',
+  governor_name: '',
   governor_title: 'Executive Governor, Taraba State',
-  governor_vision_free_education: "[PLACEHOLDER: the Governor's vision for FREE EDUCATION in Taraba State. Replace this text with the approved wording. No quote is published until the ministry enters it here.]",
-  governor_vision_girl_child: "[PLACEHOLDER: the Governor's vision for SUPPORT FOR THE GIRL-CHILD. Replace this text with the approved wording.]",
-  governor_vision_note: 'Note: the text on this page is a placeholder entered by the portal administrator. It is not an official quote until the ministry publishes the approved wording.',
-  about_history: '[PLACEHOLDER: history of the ministry. Enter the approved text from Admin -> Site settings.]',
-  about_functions: '[PLACEHOLDER: statutory functions of the ministry. One per line.]',
-  about_departments: '[PLACEHOLDER: departments and units of the ministry. One per line.]',
-  about_leadership: '[PLACEHOLDER: leadership — Honourable Commissioner, Permanent Secretary, Directors. One per line.]',
-  mission: '[PLACEHOLDER: the mission statement of the ministry.]',
-  vision: '[PLACEHOLDER: the vision statement of the ministry.]',
-  contact_address: '[PLACEHOLDER: ministry office address, Jalingo, Taraba State]',
-  contact_phone: '[PLACEHOLDER: +234 ...]',
-  contact_email: '[PLACEHOLDER: info@example.gov.ng]',
-  contact_map_link: 'https://www.google.com/maps/search/?api=1&query=Jalingo%20Taraba%20State',
-  office_hours: '[PLACEHOLDER: Monday - Friday, 8:00am - 4:00pm]',
+  governor_vision_free_education: '',
+  governor_vision_girl_child: '',
+  governor_vision_note: '',
+  about_history: '',
+  about_functions: '',
+  about_departments: '',
+  about_leadership: '',
+  mission: '',
+  vision: '',
+  contact_address: '',
+  contact_phone: '',
+  contact_email: '',
+  contact_map_link: '',
+  office_hours: '',
   footer_credit_text: 'Powered by Flokytechsolution',
   footer_credit_link: 'https://flokytechsolution.com',
   mail_domain: process.env.MAIL_DOMAIN || 'tsmsvte.gov.ng',
   sms_sender_id: process.env.SMS_SENDER_ID || 'TSMSVTE',
   sms_footer: ' - TSMSVTE',
   admin_chat_status: 'offline',
-  admin_working_hours: '[PLACEHOLDER: Monday - Friday, 8:00am - 4:00pm]',
+  admin_working_hours: '',
   public_bot_enabled: '1',
   registration_open: '1',
   privacy_notice: 'Your personal data (name, phone, email, staff number, rank, school and passport photograph) is collected only to verify your employment and to create your portal account. It is processed in line with the Nigeria Data Protection Act 2023, is visible only to authorised ministry administrators, is never sold or shared with third parties, and is removed when it is no longer required. By registering you consent to this processing.',
@@ -367,6 +367,44 @@ async function seedSettings() {
   for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
     await rawRun(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT (key) DO NOTHING`, [key, String(value)]);
   }
+  // Boot migration: strip any placeholder copy that shipped in older seeds and
+  // repoint a few keys to the ministry's own local photos.  Runs after the seed
+  // on every boot.  Idempotent: it only touches rows whose value still starts
+  // with "[PLACEHOLDER" (cleared to '') or, for three image keys, rows that
+  // still point at an external placeholder host.  A value the ministry entered
+  // never starts with "[PLACEHOLDER" and is never an unsplash link, so real
+  // edits are left untouched and the second run changes 0 rows.
+  await rawRun(`UPDATE settings SET value = '' WHERE value LIKE '[PLACEHOLDER%'`, []);
+
+  // Neutral, factual copy the ministry is free to overwrite in Site settings.
+  // Filled only where the value is still empty, so an entered value is never
+  // replaced.  These two describe what the portal does — no claim is made.
+  const NEUTRAL_COPY = {
+    site_tagline: 'Official portal of the Taraba State Ministry of Secondary, Vocational and Technical Education',
+    hero_subheading: 'News, schools directory, circulars and staff services in one place.'
+  };
+  for (const [key, copy] of Object.entries(NEUTRAL_COPY)) {
+    await rawRun(`UPDATE settings SET value = ? WHERE key = ? AND value = ''`, [copy, key]);
+  }
+
+
+  const LOCAL_GALLERY = {
+    about_gallery_image_1: '/img/photos/model-school-1.jpg',
+    about_gallery_image_2: '/img/photos/model-school-2.jpg',
+    default_news_cover: ''
+  };
+  for (const [key, local] of Object.entries(LOCAL_GALLERY)) {
+    await rawRun(
+      `UPDATE settings SET value = ? WHERE key = ? AND value LIKE 'https://images.unsplash.com%'`,
+      [local, key]
+    );
+  }
+
+  // Clear the default Google Maps search only while it is still that placeholder.
+  await rawRun(
+    `UPDATE settings SET value = '' WHERE key = 'contact_map_link' AND value = 'https://www.google.com/maps/search/?api=1&query=Jalingo%20Taraba%20State'`,
+    []
+  );
 }
 
 async function seedLgas() {
