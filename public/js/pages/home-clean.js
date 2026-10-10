@@ -240,6 +240,21 @@
       if (host && window.MutationObserver) {
         new MutationObserver(fixNews).observe(host, { childList: true, subtree: true });
       }
+
+      /* Hero background: applied ONLY when the ministry has set a real raster
+       * image (jpg/jpeg/png/webp). SVG placeholders are ignored, so the framed
+       * portrait hero stays intact until a real photo is uploaded in Admin. */
+      var heroImage = s.hero_image;
+      if (isReal(heroImage) && /\.(jpg|jpeg|png|webp)(\?|$)/i.test(heroImage)) {
+        var hero = document.querySelector('.hero, .hero-parallax');
+        if (hero) {
+          hero.style.backgroundImage =
+            "linear-gradient(135deg, rgba(11,107,58,.75), rgba(0,0,0,.8)), url('" + heroImage + "')";
+          hero.style.backgroundSize = 'cover';
+          hero.style.backgroundPosition = 'center';
+          hero.style.backgroundRepeat = 'no-repeat';
+        }
+      }
     })
     .catch(function () { /* network/JSON error: leave the page as-is */ });
 })();
