@@ -209,8 +209,14 @@
       .indexOf(state.user.role) !== -1;
   }
   function setting(key, fallback) {
-    const v = state.settings[key];
-    return (v === undefined || v === null || v === '') ? (fallback === undefined ? '' : v) : v;
+    const s = state.settings || {};
+    const v = s[key];
+    /* An absent or empty setting must fall back to the caller's default —
+     * the old expression handed back the missing value instead. */
+    if (v === undefined || v === null || v === '') {
+      return fallback === undefined ? '' : fallback;
+    }
+    return v;
   }
 
   /* Apply ministry branding colours from settings onto :root. */
@@ -255,11 +261,21 @@
   }
 
   function renderHeader(active) {
+    /* Guarantee: a missing or odd setting can never break the page shell —
+     * log it and leave the header alone instead of throwing. */
+    try {
+      renderHeaderInner(active);
+    } catch (err) {
+      console.warn('[app] header could not render:', err && err.message);
+    }
+  }
+
+  function renderHeaderInner(active) {
     const host = document.getElementById('site-header');
     if (!host) return;
-    const short = setting('ministry_short_name', 'TSMSVTE');
-    const full = setting('ministry_name', 'Portal');
-    const logo = setting('logo', '/icons/logo-192.png');
+    const short = String(setting('ministry_short_name', 'TSMSVTE') || 'TSMSVTE');
+    const full = String(setting('ministry_name', 'Portal') || 'Portal');
+    const logo = String(setting('logo', '/icons/logo-192.png') || '/icons/logo-192.png');
 
     let links = NAV_PUBLIC.map(function (item) {
       return navLink(item.href, item.label, active === item.href);
@@ -384,23 +400,46 @@
 
   /* -------------------------------- footer -------------------------------- */
   function renderFooter() {
+    /* Same guarantee as the header: a missing setting never breaks the shell. */
+    try {
+      renderFooterInner();
+    } catch (err) {
+      console.warn('[app] footer could not render:', err && err.message);
+    }
+  }
+
+  function renderFooterInner() {
     const host = document.getElementById('site-footer');
     if (!host) return;
     const credit = setting('footer_credit_text', '');
     const creditLink = setting('footer_credit_link', '#');
+    const orgName = setting('ministry_name', '');
+    const address = setting('contact_address', '');
+    /* Contact lines are hidden when their setting is empty — the footer never
+     * prints blank <li>s or the text "undefined". */
+    const contactItems = [
+      setting('contact_phone', ''), setting('contact_email', ''), setting('office_hours', '')
+    ].filter(function (v) { var t = String(v).trim(); return t !== '' && !/\[PLACEHOLDER/i.test(t); })
+      .map(function (v) { return '<li>' + esc(v) + '</li>'; });
+    if (String(setting('contact_map_link', '')).trim() !== '') {
+      contactItems.push('<li><a href="' + esc(setting('contact_map_link')) +
+        '" rel="noopener" target="_blank">Open in maps</a></li>');
+    }
+    contactItems.push('<li><a href="/register.html">Staff registration</a></li>');
     host.innerHTML =
       '<div class="container">' +
         '<div class="footer-grid">' +
           '<div>' +
             '<h4>' + esc(setting('ministry_short_name', 'Portal')) + '</h4>' +
-            '<p>' + esc(setting('ministry_name', '')) + '</p>' +
-            '<p class="mb-0">' + esc(setting('contact_address', '')) + '</p>' +
+            (orgName ? '<p>' + esc(orgName) + '</p>' : '') +
+            (address ? '<p class="mb-0">' + esc(address) + '</p>' : '') +
           '</div>' +
           '<div>' +
             '<h4>Explore</h4>' +
             '<ul>' +
               '<li><a href="/news.html">News</a></li>' +
               '<li><a href="/events.html">Events</a></li>' +
+              '<li><a href="/contact.html">Contact us</a></li>' +
               '<li><a href="/schools.html">Schools directory</a></li>' +
               '<li><a href="/circulars.html">Circulars &amp; downloads</a></li>' +
               '<li><a href="/faq.html">Frequently asked questions</a></li>' +
@@ -408,15 +447,7 @@
           '</div>' +
           '<div>' +
             '<h4>Contact</h4>' +
-            '<ul>' +
-              '<li>' + esc(setting('contact_phone', '')) + '</li>' +
-              '<li>' + esc(setting('contact_email', '')) + '</li>' +
-              '<li>' + esc(setting('office_hours', '')) + '</li>' +
-              (setting('contact_map_link', '')
-                ? '<li><a href="' + esc(setting('contact_map_link')) + '" rel="noopener" target="_blank">Open in maps</a></li>'
-                : '') +
-              '<li><a href="/register.html">Staff registration</a></li>' +
-            '</ul>' +
+            '<ul>' + contactItems.join('') + '</ul>' +
           '</div>' +
         '</div>' +
         '<div class="footer-bottom">' +
@@ -520,8 +551,20 @@
     return true;
   }
 
+  /* ------------------- global image error handling (CSP) --------------- *
+   * CSP blocks inline onerror=, so every <img> that fails to load is hidden
+   * here instead.  A single delegated capture listener covers images already
+   * on the page and any a page script adds later (news/events/home cards). */
+  function wireImageErrors() {
+    document.addEventListener('error', function (ev) {
+      const el = ev.target;
+      if (el && el.tagName === 'IMG') el.style.visibility = 'hidden';
+    }, true);
+  }
+
   function boot() {
     const meta = pageMeta();
+    wireImageErrors();
     return fetchSession().then(function () {
       if (meta.requiresAuth && !state.user) {
         const next = encodeURIComponent(window.location.pathname + window.location.search);

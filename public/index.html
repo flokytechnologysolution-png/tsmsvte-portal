@@ -14,19 +14,28 @@
 
   <main>
     <!-- hero: every word comes from Admin -> Site settings -->
-    <section class="hero hero-parallax" id="hero">
-      <div class="container">
-        <h1 id="hero-heading">Welcome to the Taraba State Ministry of Secondary, Vocational and Technical Education</h1>
-        <p class="sub" id="hero-sub"></p>
-        <div class="row">
-          <a class="btn btn-accent btn-lg" href="/schools.html">Browse schools</a>
-          <a class="btn btn-outline btn-lg" href="/register.html">Staff registration</a>
-          <button class="btn btn-outline btn-lg hidden" type="button" id="pwa-install-btn">Install app</button>
+    <section class="hero hero-portrait-hero" id="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <h1 id="hero-heading">Welcome to the Taraba State Ministry of Secondary, Vocational and Technical Education</h1>
+          <p class="sub" id="hero-sub"></p>
+          <div class="row">
+            <a class="btn btn-accent btn-lg" href="/schools.html">Browse schools</a>
+            <a class="btn btn-outline btn-lg" href="/register.html">Staff registration</a>
+            <button class="btn btn-outline btn-lg hidden" type="button" id="pwa-install-btn">Install app</button>
+          </div>
+          <p class="sub small muted hidden" id="pwa-install-hint">
+            On iPhone or iPad: tap the Share button, then choose &ldquo;Add to Home Screen&rdquo;.
+          </p>
+          <div class="hero-stats" id="hero-stats"></div>
         </div>
-        <p class="sub small muted hidden" id="pwa-install-hint">
-          On iPhone or iPad: tap the Share button, then choose &ldquo;Add to Home Screen&rdquo;.
-        </p>
-        <div class="hero-stats" id="hero-stats"></div>
+        <div class="hero-figure">
+          <figure class="portrait-frame">
+            <img id="hero-portrait" src="/img/photos/governor.jpg"
+                 alt="Portrait of the Executive Governor of Taraba State" />
+            <figcaption id="hero-portrait-caption" class="portrait-caption hidden"></figcaption>
+          </figure>
+        </div>
       </div>
     </section>
 

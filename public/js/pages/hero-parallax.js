@@ -1,15 +1,22 @@
 /**
- * public/js/pages/hero-parallax.js - gentle depth for the home hero.
- * The photo is a fixed CSS background; this only eases the text layer.
- * Off on touch devices and for reduced-motion users. Never throws.
+ * public/js/pages/hero-parallax.js - gentle fixed-background depth for the hero.
+ * The portrait is a plain <img> (not a stretched background); this only eases
+ * the copy layer while the hero is on screen. Off unless the hero image is at
+ * least 1200px wide (the ministry's photos are far smaller, so there is no
+ * depth effect by default), off on touch devices and for reduced-motion users.
+ * Never throws.
  */
 (function () {
   'use strict';
   try {
+    var MIN_WIDTH = 1200;
     var mm = window.matchMedia;
     if (!mm || mm('(prefers-reduced-motion: reduce)').matches || mm('(hover: none)').matches) return;
+    var img = document.getElementById('hero-portrait');
+    var natural = img ? (img.naturalWidth || img.width || 0) : 0;
+    if (!img || natural < MIN_WIDTH) return;   /* too small to parallax - do nothing */
     var hero = document.getElementById('hero');
-    var inner = hero && hero.querySelector('.container');
+    var inner = hero && hero.querySelector('.hero-copy');
     if (!hero || !inner) return;
     var ticking = false;
     function update() {
@@ -23,6 +30,6 @@
     window.addEventListener('scroll', function () {
       if (!ticking) { ticking = true; window.requestAnimationFrame(update); }
     }, { passive: true });
-    update();
+    if (img.complete) update(); else img.addEventListener('load', update);
   } catch (e) { /* decoration only */ }
 })();

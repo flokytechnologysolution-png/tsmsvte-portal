@@ -21,8 +21,7 @@
     /* Fall back to the ministry's default cover when an item has none. */
     const src = n.cover_image || (App.state.settings && App.state.settings.default_news_cover) || '';
     const cover = src
-      ? '<div class="cover"><img src="' + App.esc(src) + '" alt="" loading="lazy" ' +
-        'onerror="this.style.display=\'none\'"></div>'
+      ? '<div class="cover"><img src="' + App.esc(src) + '" alt="" loading="lazy"></div>'
       : '<div class="cover" aria-hidden="true"></div>';
     return '<a class="news-card" href="/news/' + encodeURIComponent(n.slug || n.id) + '">' +
       cover +

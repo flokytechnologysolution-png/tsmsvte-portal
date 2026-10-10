@@ -18,8 +18,7 @@
 
   function card(e) {
     var img = e.image
-      ? '<div class="cover"><img src="' + App.esc(e.image) + '" alt="" loading="lazy" ' +
-        'onerror="this.style.display=\'none\'"></div>'
+      ? '<div class="cover"><img src="' + App.esc(e.image) + '" alt="" loading="lazy"></div>'
       : '';
     return '<article class="card event-card">' +
       img +

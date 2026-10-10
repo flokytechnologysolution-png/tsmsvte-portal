@@ -2457,9 +2457,8 @@
   ];
   function loadSettings() {
     section('settings', 'Site settings',
-      '<div class="placeholder-note">Nothing on this portal is hardcoded — every heading, contact detail ' +
-      'and paragraph comes from these values. Text still showing a <strong>[PLACEHOLDER]</strong> marker ' +
-      'has not been written yet.</div>' +
+      '<div class="placeholder-note">Every heading, contact detail and paragraph comes from these values. ' +
+      'Empty fields are hidden on the public site until text is entered.</div>' +
       '<form id="set-form"><div id="set-body"><div class="empty-state"><strong>Loading…</strong></div></div>' +
       '<div class="form-actions"><button class="btn" type="submit">Save all settings</button></div></form>');
 

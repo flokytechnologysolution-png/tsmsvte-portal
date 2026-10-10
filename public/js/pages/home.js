@@ -64,10 +64,29 @@
         : '<li class="muted">' + App.esc(s.about_functions || 'Not yet entered.') + '</li>';
     }
 
-    const hero = document.getElementById('hero');
-    if (hero && s.hero_image) {
-      hero.style.backgroundImage = 'url("' + s.hero_image + '")';
-      hero.classList.add('has-image');
+    /* Hero portrait: the governor card uses governor_photo when the ministry
+       has uploaded a real photo; the .svg default is treated as "not set" so
+       the built-in local portrait (governor.jpg) shows instead. Caption shows
+       only when a name has actually been entered. */
+    const heroImg = document.getElementById('hero-portrait');
+    if (heroImg) {
+      const photo = s.governor_photo;
+      if (photo && !/\.svg(\?|$)/i.test(photo)) {
+        heroImg.src = photo;
+        heroImg.alt = s.governor_name
+          ? 'Portrait of ' + s.governor_name
+          : 'Portrait of the Executive Governor of Taraba State';
+      }
+    }
+    const heroCap = document.getElementById('hero-portrait-caption');
+    if (heroCap) {
+      if (s.governor_name) {
+        heroCap.textContent = s.governor_name +
+          (s.governor_title ? ' — ' + s.governor_title : '');
+        heroCap.classList.remove('hidden');
+      } else {
+        heroCap.classList.add('hidden');
+      }
     }
 
     const contact = document.getElementById('contact-list');
@@ -104,8 +123,7 @@
     /* Fall back to the ministry's default cover when an item has none. */
     const src = n.cover_image || (App.state.settings && App.state.settings.default_news_cover) || '';
     const cover = src
-      ? '<div class="cover"><img src="' + App.esc(src) + '" alt="" loading="lazy" ' +
-        'onerror="this.style.display=\'none\'"></div>'
+      ? '<div class="cover"><img src="' + App.esc(src) + '" alt="" loading="lazy"></div>'
       : '<div class="cover" aria-hidden="true"></div>';
     return '<a class="news-card" href="/news/' + encodeURIComponent(n.slug || n.id) + '">' +
       cover +
