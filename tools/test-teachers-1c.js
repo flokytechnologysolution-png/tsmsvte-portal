@@ -72,6 +72,9 @@ function buildTestApp() {
   app2.use('/api/staff', require('../routes/staff'));
   app2.use('/api/schools', require('../routes/schools'));
   app2.use('/api/teachers', require('../routes/teachers'));
+  /* Same tail as server.js: the teachers routes report validation failures
+   * through next(err), so the JSON error handler must be mounted. */
+  app2.use(require('../middleware/errors').errorHandler);
   return app2;
 }
 
@@ -110,8 +113,8 @@ function newJar() { return { cookies: {} }; }
 /* Sessions are minted directly: insert user row, sign a JWT exactly like the
  * login route does, drop it in the jar. No login limiter involved. */
 const testAuth = require('../middleware/auth');
-function sessionFor(userId) {
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+async function sessionFor(userId) {
+  const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
   const jar = newJar();
   jar.cookies[testAuth.COOKIE_NAME] = testAuth.signToken(user);
   return { jar: jar, csrf: null };
@@ -176,59 +179,72 @@ function authed(sess) {
 }
 
 async function runAll() {
-  const lgas = db.prepare('SELECT id, name FROM lgas ORDER BY sort_order').all();
+  const lgas = await db.query('SELECT id, name FROM lgas ORDER BY sort_order');
   const lgaA = lgas[0];
   const lgaB = lgas[1] || lgas[0];
   console.log('[1c-test] LGA A=' + lgaA.name + ' B=' + lgaB.name);
 
-  const mkSchool = function (name, lga) {
-    return db.prepare(
+  const mkSchool = async function (name, lga) {
+    const info = await db.run(
       "INSERT INTO schools (name, lga, lga_id, type, category, boarding, status)" +
-      " VALUES (?, ?, ?, 'junior_secondary', 'mixed', 'day', 'active')"
-    ).run(name, lga.name, lga.id).lastInsertRowid;
+      " VALUES (?, ?, ?, 'junior_secondary', 'mixed', 'day', 'active')",
+      [name, lga.name, lga.id]
+    );
+    return info.lastInsertRowid;
   };
-  const sA1 = mkSchool('1C Fake School A1', lgaA);
-  const sA2 = mkSchool('1C Fake School A2', lgaA);
-  const sB1 = mkSchool('1C Fake School B1', lgaB);
+  const sA1 = await mkSchool('1C Fake School A1', lgaA);
+  const sA2 = await mkSchool('1C Fake School A2', lgaA);
+  const sB1 = await mkSchool('1C Fake School B1', lgaB);
   const hash = await require('bcrypt').hash('Testpass123!', 4);
-  const mkUser = function (email, role, lgaId, schoolId) {
-    return db.prepare(
+  const mkUser = async function (email, role, lgaId, schoolId) {
+    const info = await db.run(
       "INSERT INTO users (email, password_hash, full_name, role, status, lga_id, school_id)" +
-      " VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?)"
-    ).run(email, hash, email.split('@')[0], role, lgaId, schoolId).lastInsertRowid;
+      " VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?)",
+      [email, hash, email.split('@')[0], role, lgaId, schoolId]
+    );
+    return info.lastInsertRowid;
   };
-  const idOwner = mkUser('t1c-owner@example.com', 'OWNER', null, null);
-  const idAdmin = mkUser('t1c-admin@example.com', 'ADMIN', null, null);
-  const idOffA = mkUser('t1c-lgaA@example.com', 'LGA_OFFICER', lgaA.id, null);
-  const idOffB = mkUser('t1c-lgaB@example.com', 'LGA_OFFICER', lgaB.id, null);
-  const idAdmA = mkUser('t1c-schoolA1@example.com', 'SCHOOL_ADMIN', lgaA.id, sA1);
-  const idAdmB = mkUser('t1c-schoolB1@example.com', 'SCHOOL_ADMIN', lgaB.id, sB1);
-  const idEditor = mkUser('t1c-editor@example.com', 'EDITOR', null, null);
-  const idStaff = mkUser('t1c-staff@example.com', 'STAFF', null, null);
-  const mkTeacher = function (schoolId, staffNo, name, subject) {
-    return db.prepare(
+  const idOwner = await mkUser('t1c-owner@example.com', 'OWNER', null, null);
+  const idAdmin = await mkUser('t1c-admin@example.com', 'ADMIN', null, null);
+  const idOffA = await mkUser('t1c-lgaA@example.com', 'LGA_OFFICER', lgaA.id, null);
+  const idOffB = await mkUser('t1c-lgaB@example.com', 'LGA_OFFICER', lgaB.id, null);
+  const idAdmA = await mkUser('t1c-schoolA1@example.com', 'SCHOOL_ADMIN', lgaA.id, sA1);
+  const idAdmB = await mkUser('t1c-schoolB1@example.com', 'SCHOOL_ADMIN', lgaB.id, sB1);
+  const idEditor = await mkUser('t1c-editor@example.com', 'EDITOR', null, null);
+  const idStaff = await mkUser('t1c-staff@example.com', 'STAFF', null, null);
+  const mkTeacher = async function (schoolId, staffNo, name, subject) {
+    const info = await db.run(
       'INSERT INTO teachers (school_id, staff_no, full_name, sex, date_of_birth,' +
       " qualification, subject, rank, phone, status)" +
-      " VALUES (?, ?, ?, 'M', '1980-01-01', 'B.Ed', ?, 'Teacher II', '08030000001', 'ACTIVE')"
-    ).run(schoolId, staffNo, name, subject || 'Mathematics').lastInsertRowid;
+      " VALUES (?, ?, ?, 'M', '1980-01-01', 'B.Ed', ?, 'Teacher II', '08030000001', 'ACTIVE')",
+      [schoolId, staffNo, name, subject || 'Mathematics']
+    );
+    return info.lastInsertRowid;
   };
-  const tA1 = mkTeacher(sA1, 'T1C-A1', 'Fake Teacher A1');
-  const tA2 = mkTeacher(sA2, 'T1C-A2', 'Fake Teacher A2', 'English');
-  const tB1 = mkTeacher(sB1, 'T1C-B1', 'Fake Teacher B1');
+  const tA1 = await mkTeacher(sA1, 'T1C-A1', 'Fake Teacher A1');
+  const tA2 = await mkTeacher(sA2, 'T1C-A2', 'Fake Teacher A2', 'English');
+  const tB1 = await mkTeacher(sB1, 'T1C-B1', 'Fake Teacher B1');
 
-  const owner = authed(await bootCsrf(sessionFor(idOwner)));
-  const admin = authed(await bootCsrf(sessionFor(idAdmin)));
-  const offA = authed(await bootCsrf(sessionFor(idOffA)));
-  const offB = authed(await bootCsrf(sessionFor(idOffB)));
-  const admA = authed(await bootCsrf(sessionFor(idAdmA)));
-  const admB = authed(await bootCsrf(sessionFor(idAdmB)));
-  const editor = authed(await bootCsrf(sessionFor(idEditor)));
-  const staff = authed(await bootCsrf(sessionFor(idStaff)));
+  const owner = authed(await bootCsrf(await sessionFor(idOwner)));
+  const admin = authed(await bootCsrf(await sessionFor(idAdmin)));
+  const offA = authed(await bootCsrf(await sessionFor(idOffA)));
+  const offB = authed(await bootCsrf(await sessionFor(idOffB)));
+  const admA = authed(await bootCsrf(await sessionFor(idAdmA)));
+  const admB = authed(await bootCsrf(await sessionFor(idAdmB)));
+  const editor = authed(await bootCsrf(await sessionFor(idEditor)));
+  const staff = authed(await bootCsrf(await sessionFor(idStaff)));
   const anon = { get: function (p) { return jarRequest(newJar(), 'GET', p); } };
 
   const names = function (r) {
     return (r.body.teachers || []).map(function (t) { return t.staff_no; }).sort();
   };
+
+  /* The PUT route takes the FULL record (same as the admin console: load the
+   * row, apply the edits, save everything back) and answers { ok: true }. */
+  async function putMerged(sess, id, changes) {
+    const cur = (await sess.get('/api/teachers/' + id)).body.teacher;
+    return sess.put('/api/teachers/' + id, Object.assign({}, cur, changes));
+  }
 
   let r = await owner.get('/api/teachers');
   check('owner sees all 3', r.status === 200 && names(r).join() === 'T1C-A1,T1C-A2,T1C-B1', JSON.stringify(r.body));
@@ -261,9 +277,9 @@ async function runAll() {
     subject: 'Physics', rank: 'Teacher I', phone: '+2348030000000', status: 'ACTIVE'
   };
   r = await admA.post('/api/teachers', good);
-  check('school A creates own 201', r.status === 201 && r.body.teacher.staff_no === 'T1C-NEW',
+  check('school A creates own 201', r.status === 201 && typeof r.body.id === 'number',
     'got ' + r.status + ' ' + JSON.stringify(r.body));
-  const newId = r.body.teacher ? r.body.teacher.id : null;
+  const newId = r.body.id || null;
   r = await admA.post('/api/teachers', Object.assign({}, good, { school_id: sA2, staff_no: 'T1C-X1' }));
   check('school A create at A2 404', r.status === 404, 'got ' + r.status);
   r = await admA.post('/api/teachers', Object.assign({}, good, { school_id: sB1, staff_no: 'T1C-X2' }));
@@ -287,15 +303,18 @@ async function runAll() {
   r = await admA.post('/api/teachers', Object.assign({}, good, { staff_no: 't1c-a1' }));
   check('duplicate case-insensitive 409', r.status === 409, 'got ' + r.status);
 
-  r = await admA.put('/api/teachers/' + newId, { subject: 'Chemistry', rank: 'Senior Teacher' });
-  check('school A edits own 200', r.status === 200 && r.body.teacher.subject === 'Chemistry', 'got ' + r.status);
+  r = await putMerged(admA, newId, { subject: 'Chemistry', rank: 'Senior Teacher' });
+  check('school A edits own 200', r.status === 200 && r.body.ok === true, 'got ' + r.status);
+  r = await admA.get('/api/teachers/' + newId);
+  check('edit persisted (subject Chemistry)',
+    r.status === 200 && r.body.teacher.subject === 'Chemistry', JSON.stringify(r.body));
+  r = await admA.put('/api/teachers/' + newId, Object.assign({}, good, { school_id: sB1 }));
+  check('school A cannot move teacher out 404', r.status === 404, 'got ' + r.status);
   r = await admA.put('/api/teachers/' + tB1, { subject: 'Hacked' });
   check('school A edit cross-school 404', r.status === 404, 'got ' + r.status);
   r = await offA.put('/api/teachers/' + tB1, { subject: 'Hacked' });
   check('officer A edit cross-LGA 404', r.status === 404, 'got ' + r.status);
-  r = await admA.put('/api/teachers/' + newId, { school_id: sB1 });
-  check('school A cannot move teacher out 404', r.status === 404, 'got ' + r.status);
-  r = await offA.put('/api/teachers/' + tA1, { school_id: sA2 });
+  r = await putMerged(offA, tA1, { school_id: sA2 });
   check('officer A moves within LGA 200', r.status === 200, 'got ' + r.status);
   r = await editor.put('/api/teachers/' + tA1, { subject: 'Hacked' });
   check('editor edit 403', r.status === 403, 'got ' + r.status);
@@ -308,8 +327,10 @@ async function runAll() {
   r = await offA.get('/api/teachers/' + tA2);
   check('deleted teacher gone 404', r.status === 404, 'got ' + r.status);
   r = await admA.del('/api/schools/' + sA1);
+  check('school admin cannot delete schools (403)', r.status === 403, 'got ' + r.status);
+  r = await admin.del('/api/schools/' + sA1);
   check('school with teachers 409', r.status === 409, 'got ' + r.status);
-  const emptySchool = mkSchool('1C Fake Empty School', lgaA);
+  const emptySchool = await mkSchool('1C Fake Empty School', lgaA);
   r = await admin.del('/api/schools/' + emptySchool);
   check('empty school deletes 200', r.status === 200, 'got ' + r.status);
 
@@ -328,14 +349,17 @@ async function runAll() {
   check('pagination page 1', r.status === 200 && r.body.teachers.length === 1 && r.body.pages >= 2,
     JSON.stringify(r.body));
   r = await offA.get('/api/teachers/options');
-  check('options scoped to LGA A', r.status === 200 &&
-    (r.body.schools || []).every(function (s) { return s.lga_id === lgaA.id; }) &&
-    (r.body.lgas || []).length === 1, JSON.stringify(r.body));
+  check('options schools scoped to LGA A', r.status === 200 &&
+    (r.body.schools || []).length > 0 &&
+    (r.body.schools || []).every(function (s) { return s.lga === lgaA.name; }) &&
+    (r.body.lgas || []).length === 16, JSON.stringify(r.body));
   r = await admA.get('/api/teachers/options');
   check('options single school', r.status === 200 &&
     (r.body.schools || []).length === 1 && r.body.schools[0].id === sA1, JSON.stringify(r.body));
   r = await anon.get('/api/teachers/template.csv');
-  check('template public csv', r.status === 200 &&
+  check('template requires auth (401 for anonymous)', r.status === 401, 'got ' + r.status);
+  r = await offA.get('/api/teachers/template.csv');
+  check('template csv for console roles', r.status === 200 &&
     String(r.headers['content-type'] || '').indexOf('text/csv') !== -1, 'got ' + r.status);
   r = await offA.get('/api/teachers/export.csv');
   check('export scoped', r.status === 200 &&
@@ -348,7 +372,7 @@ async function runAll() {
   check('editor export 403', r.status === 403, 'got ' + r.status);
   r = await anon.get('/api/teachers/export.csv');
   check('anonymous export 401', r.status === 401, 'got ' + r.status);
-  const audits = db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action LIKE 'teacher.%'").get().n;
+  const audits = (await db.get("SELECT COUNT(*) AS n FROM audit_log WHERE action LIKE 'teacher.%'")).n;
   check('teacher audit rows written', audits >= 4, 'got ' + audits);
 
   const csvGood =
@@ -359,7 +383,7 @@ async function runAll() {
   check('preview 2 valid 0 invalid', r.status === 200 && r.body.report.valid === 2 &&
     r.body.report.invalid === 0 && r.body.report.created === 0, JSON.stringify(r.body));
   check('preview wrote nothing',
-    db.prepare("SELECT COUNT(*) AS n FROM teachers WHERE staff_no LIKE 'T1C-IMP%'").get().n === 0);
+    (await db.get("SELECT COUNT(*) AS n FROM teachers WHERE staff_no LIKE 'T1C-IMP%'")).n === 0);
   r = await offA.postFile('/api/teachers/import', 'imp.csv', csvGood, {});
   check('commit created 2', r.status === 200 && r.body.report.created === 2, JSON.stringify(r.body));
   const csvMixed =
@@ -383,7 +407,7 @@ async function runAll() {
   r = await offA.postFile('/api/teachers/import', 'atom.csv', csvAtomic, { mode: 'all' });
   check('atomic with bad row creates 0', r.status === 200 && r.body.report.created === 0 &&
     r.body.report.invalid === 1, JSON.stringify(r.body));
-  check('atomic row not stored', !db.prepare('SELECT id FROM teachers WHERE staff_no = ?').get('T1C-AT1'));
+  check('atomic row not stored', !(await db.get('SELECT id FROM teachers WHERE staff_no = ?', ['T1C-AT1'])));
   let big = 'school,lga,staff_no,full_name,sex,date_of_birth,qualification,subject,rank,phone,status\n';
   for (let i = 1; i <= 75; i += 1) {
     big += '"1C Fake School A1","' + lgaA.name + '",T1C-TR' + i + ',"Trunc ' + i +

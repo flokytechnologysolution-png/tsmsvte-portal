@@ -48,7 +48,12 @@
       countEl.textContent = data.total + ' school' + (data.total === 1 ? '' : 's') + ' found';
       grid.innerHTML = data.schools.length
         ? data.schools.map(card).join('')
-        : App.emptyState('No schools match', 'The ministry adds schools from the admin dashboard — try clearing the filters.');
+        : App.emptyState(
+            'No schools recorded',
+            'The ministry adds schools from the admin dashboard, or an OWNER, ADMIN or LGA officer can '
+            + '<a href="/register-school.html">add a school</a>. '
+            + 'Try clearing the filters.'
+          );
       pagerHost.innerHTML = App.pager(data.page, data.pages);
       App.qsa('#school-pager button[data-page]').forEach(function (btn) {
         App.on(btn, 'click', function () {

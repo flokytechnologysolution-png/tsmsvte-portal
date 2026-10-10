@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Register a school — Taraba State Ministry of Secondary, Vocational and Technical Education</title>
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body data-active="/register-school.html">
+  <div id="site-header"></div>
+
+  <main class="container narrow">
+    <div class="page-head">
+      <nav class="breadcrumbs">
+        <a href="/">Home</a>
+        <a href="/schools.html">Schools directory</a>
+        <span>Register a school</span>
+      </nav>
+      <div class="page-title">
+        <h1>Register a school</h1>
+        <p class="sub">Add a school to the Taraba State schools directory. It appears in the public directory immediately.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>School registration form</h2></div>
+      <div id="register-notice"></div>
+      <div id="register-body">
+        <form id="register-form" novalidate>
+          <div id="register-errors" class="form-errors" aria-live="polite"></div>
+          <div id="register-success" class="form-success" hidden></div>
+          <div class="form-grid">
+            <div class="field span-2">
+              <label for="register-name">School name *</label>
+              <input id="register-name" name="name" maxlength="200" required autocomplete="off"
+                placeholder="e.g. Government Day Secondary School Jalingo">
+            </div>
+            <div class="field">
+              <label for="register-lga">LGA *</label>
+              <select id="register-lga" name="lga" required>
+                <option value="">Loading LGAs…</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="register-type">Type *</label>
+              <select id="register-type" name="type" required>
+                <option value="">Select type…</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="register-category">Category *</label>
+              <select id="register-category" name="category" required>
+                <option value="">Select category…</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="register-boarding">Boarding *</label>
+              <select id="register-boarding" name="boarding" required>
+                <option value="">Select…</option>
+              </select>
+            </div>
+            <div class="field span-2">
+              <label for="register-address">Address</label>
+              <input id="register-address" name="address" maxlength="300" autocomplete="off"
+                placeholder="Street / town">
+            </div>
+            <div class="field">
+              <label for="register-principal">Principal</label>
+              <input id="register-principal" name="principal" maxlength="120" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="register-phone">Phone</label>
+              <input id="register-phone" name="phone" maxlength="40" inputmode="tel" autocomplete="off"
+                placeholder="08000000000">
+            </div>
+            <div class="field">
+              <label for="register-email">Email</label>
+              <input id="register-email" name="email" type="email" maxlength="120" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="register-year">Year established</label>
+              <input id="register-year" name="year_established" inputmode="numeric" maxlength="4"
+                placeholder="e.g. 1995">
+            </div>
+            <div class="field span-2">
+              <label for="register-notes">Notes</label>
+              <textarea id="register-notes" name="notes" rows="3" maxlength="1000"
+                placeholder="Internal notes about this school (optional)"></textarea>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn" type="submit" id="register-submit">Add school</button>
+            <a class="btn btn-ghost" href="/schools.html">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <p class="muted">
+      Already in the directory? Use the
+      <a href="/schools.html">schools directory</a>.
+      Schools added here appear in the public directory immediately.
+    </p>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="/js/app.js"></script>
+  <script src="/js/pages/register-school.js"></script>
+</body>
+</html>

@@ -252,6 +252,7 @@
     { href: '/news.html', label: 'News' },
     { href: '/events.html', label: 'Events' },
     { href: '/schools.html', label: 'Schools' },
+    { href: '/register-school.html', label: 'Register a school' },
     { href: '/circulars.html', label: 'Circulars' },
     { href: '/faq.html', label: 'FAQ' }
   ];
@@ -426,6 +427,7 @@
         '" rel="noopener" target="_blank">Open in maps</a></li>');
     }
     contactItems.push('<li><a href="/register.html">Staff registration</a></li>');
+    contactItems.push('<li><a href="/register-school.html">Register a school</a></li>');
     host.innerHTML =
       '<div class="container">' +
         '<div class="footer-grid">' +
