@@ -721,3 +721,16 @@ table.data td.actions { white-space: nowrap; }
   .hero.hero-parallax::before{background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,.72))}
 }
 @media (prefers-reduced-motion:reduce){.hero.hero-parallax{background-attachment:scroll}}
+
+/* gallery-fit: gallery photos fully visible, evenly framed, never stretched */
+#gallery .gallery-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;justify-items:center}
+#gallery .gallery-item{margin:0;width:100%;max-width:560px;aspect-ratio:4/3;overflow:hidden;
+  border-radius:var(--radius,12px);background:var(--primary-tint,#e8f3ec);box-shadow:0 8px 24px rgba(0,0,0,.14)}
+#gallery .gallery-item img{display:block;width:100%;height:100%;max-width:none;object-fit:cover;object-position:center 35%}
+
+/* portal-services: "what you can do here" cards */
+.service-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:16px}
+.service-card{display:block;padding:20px;text-decoration:none;color:inherit;transition:transform .15s,box-shadow .15s}
+.service-card:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.12)}
+.service-card h3{margin:0 0 6px;color:var(--primary)}
+.service-card p{margin:0}

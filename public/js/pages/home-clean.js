@@ -91,15 +91,22 @@
       if (!realImage(s.commissioner_photo)) hide(box('comm-photo', '.leader-photo'));
     }
 
-    /* gallery */
-    var g1 = realImage(s.about_gallery_image_1);
-    var g2 = realImage(s.about_gallery_image_2);
-    if (!g1 && !g2) {
-      hide($('gallery'));
-    } else {
-      if (!g1) hide(box('gal1-img', '.gallery-item'));
-      if (!g2) hide(box('gal2-img', '.gallery-item'));
+    /* gallery: only the site's own photos are used. Empty, placeholder or
+     * outside-link values fall back to the model school photos. */
+    var FALLBACK = ['/img/photos/model-school-1.jpg', '/img/photos/model-school-2.jpg'];
+    function localPath(v, fb) {
+      var x = realImage(v);
+      return (x && x.charAt(0) === '/' && x.charAt(1) !== '/') ? x : fb;
     }
+    [['gal1-img', localPath(s.about_gallery_image_1, FALLBACK[0])],
+     ['gal2-img', localPath(s.about_gallery_image_2, FALLBACK[1])]].forEach(function (p) {
+      var img = $(p[0]);
+      if (!img) return;
+      img.classList.remove('is-broken');
+      img.style.display = '';
+      img.onerror = function () { hide(box(p[0], '.gallery-item')); };
+      img.src = p[1];
+    });
 
     /* about */
     var mission = real(s.mission);
