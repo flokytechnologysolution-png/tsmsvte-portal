@@ -79,6 +79,17 @@ const writeLimiter = rateLimit({
   handler: json('Too many changes at once. Please slow down.')
 });
 
+/* File uploads into the DB: keep them well under the write limit so the
+ * database can't be filled quickly by one account. */
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 60,
+  keyGenerator: keyFor,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: json('Too many uploads. Please wait a while before uploading more files.')
+});
+
 module.exports = {
   globalLimiter: globalLimiter,
   loginLimiter: loginLimiter,
@@ -86,5 +97,6 @@ module.exports = {
   chatLimiter: chatLimiter,
   smsLimiter: smsLimiter,
   mailLimiter: mailLimiter,
-  writeLimiter: writeLimiter
+  writeLimiter: writeLimiter,
+  uploadLimiter: uploadLimiter
 };

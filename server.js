@@ -20,6 +20,7 @@ const csrf = require('./middleware/csrf');
 const auth = require('./middleware/auth');
 const { globalLimiter } = require('./middleware/rateLimit');
 const { notFound, errorHandler } = require('./middleware/errors');
+const filesRoute = require('./routes/files');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -109,6 +110,7 @@ app.use('/api/mail', require('./routes/mail'));
 app.use('/api/sms', require('./routes/sms'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/files', filesRoute);
 app.use('/api', notFound);
 
 /* ------------------------------ static files --------------------------- */
@@ -117,6 +119,8 @@ const staticOptions = {
   etag: true,
   setHeaders: function (res) { res.setHeader('X-Content-Type-Options', 'nosniff'); }
 };
+/* Files stored in the database (permanent across redeploys). Public GET. */
+app.get('/files/:id', filesRoute.serve);
 app.use('/uploads/photos', express.static(path.join(db.UPLOAD_DIR, 'photos'), staticOptions));
 app.use('/uploads/circulars', express.static(path.join(db.UPLOAD_DIR, 'circulars'), staticOptions));
 app.use('/uploads/branding', express.static(path.join(db.UPLOAD_DIR, 'branding'), staticOptions));

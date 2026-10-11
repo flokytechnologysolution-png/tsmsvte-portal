@@ -40,6 +40,25 @@ self.addEventListener('fetch', function (event) {
   if (url.pathname.indexOf('/api/') === 0) return;       /* API: never cache */
   if (url.pathname === '/ws') return;
 
+  /* Uploaded files are immutable and addressed by a content id, so serve them
+   * cache-first: they work offline and can never go stale (a replacement is a
+   * brand-new id). */
+  if (url.pathname.indexOf('/files/') === 0) {
+    event.respondWith(
+      caches.match(req).then(function (hit) {
+        if (hit) return hit;
+        return fetch(req).then(function (res) {
+          if (res && res.ok && res.type === 'basic') {
+            const copy = res.clone();
+            caches.open(CACHE).then(function (cache) { cache.put(req, copy); }).catch(function () { /* noop */ });
+          }
+          return res;
+        });
+      })
+    );
+    return;
+  }
+
   /* Pages & assets: network first, fall back to cache when offline. */
   event.respondWith(
     fetch(req).then(function (res) {

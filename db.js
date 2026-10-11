@@ -256,6 +256,27 @@ async function ensureSchema() {
     ensureSqliteMigrations();
   }
 }
+/* The `files` table stores uploaded images/documents IN the database so they
+ * survive Render's free plan (no persistent disk). Created additively and
+ * idempotently on every boot for both SQLite (BLOB) and PostgreSQL (BYTEA). */
+async function ensureFilesTable() {
+  const dataType = IS_PROD ? 'BYTEA' : 'BLOB';
+  const createdDefault = IS_PROD
+    ? 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+    : "TEXT NOT NULL DEFAULT (datetime('now'))";
+  await rawRun(
+    'CREATE TABLE IF NOT EXISTS files (' +
+    'id TEXT PRIMARY KEY, ' +
+    "original_name TEXT NOT NULL DEFAULT '', " +
+    "mime TEXT NOT NULL DEFAULT '', " +
+    'size INTEGER NOT NULL DEFAULT 0, ' +
+    'data ' + dataType + ', ' +
+    'created_by INTEGER, ' +
+    'created_at ' + createdDefault + ')'
+  );
+}
+
+
 
 /* ------------------------------------------------------------------ *
  * Constants & Helpers
@@ -482,6 +503,7 @@ let seededOwner = null;
 (async function initDb() {
   try {
     await ensureSchema();
+    await ensureFilesTable();
     seededOwner = await seed();
     await backfillSchoolLgaIds();
   } catch (err) {

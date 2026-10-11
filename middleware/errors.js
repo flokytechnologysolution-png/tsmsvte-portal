@@ -36,9 +36,14 @@ function errorHandler(err, req, res, next) {
   }
 
   if (err instanceof multer.MulterError) {
-    const message = err.code === 'LIMIT_FILE_SIZE'
-      ? 'That file is too large. Maximum size is ' + (process.env.MAX_UPLOAD_MB || 5) + ' MB.'
-      : (err.field || 'Upload rejected. Check the file type and size.');
+    /* A file over multer's own limit is a 413 (payload too large); other
+     * multer rejections (too many files, wrong field) are client errors. */
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'That file is too large.' });
+    }
+    const message = err.code === 'LIMIT_UNEXPECTED_FILE'
+      ? 'Only one file may be uploaded at a time.'
+      : 'Upload rejected. Check the file type and size.';
     return res.status(400).json({ error: message });
   }
 
