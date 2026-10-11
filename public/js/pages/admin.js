@@ -2485,14 +2485,140 @@
             '<p class="kv-note mt-0">' + App.esc(TOGGLES[k][1]) + '</p></div>';
         }).join('') +
         '<hr class="divider">' +
-        uploadSlot('logo', 'Upload a logo') +
-        uploadSlot('hero_image', 'Upload a home page image') +
-        uploadSlot('governor_photo', 'Upload the governor photograph') +
         '<div id="set-integ" class="integ"></div>';
 
+      wireImageFields(host);
       renderIntegrations(d);
       applySenderIdLock(d.sms_sender_id);
     }).catch(failed);
+  }
+
+  /* Wire the Upload / Clear buttons on every image setting once the form is
+   * rendered. Upload picks a file, resizes it in the browser, stores it through
+   * POST /api/settings/upload and writes the returned "/files/<id>" back into
+   * the matching s-<key> text input (and updates the live preview). Nothing is
+   * persisted here: the admin still clicks "Save all settings", which sends the
+   * PUT — at which point the server deletes the previous file only when no
+   * other setting/news/event/circular/avatar still references it. */
+  function wireImageFields(host) {
+    /* Let the text input drive the preview too, so a pasted URL previews live. */
+    App.qsa('[data-image-field] input[id^="s-"]', host).forEach(function (input) {
+      App.on(input, 'change', function () {
+        const key = input.id.slice(2);
+        const img = document.getElementById('pv-' + key);
+        if (img) img.src = input.value.trim();
+      });
+    });
+
+    App.qsa('.img-clear', host).forEach(function (btn) {
+      App.on(btn, 'click', function () {
+        const key = btn.getAttribute('data-key');
+        const input = document.getElementById('s-' + key);
+        const img = document.getElementById('pv-' + key);
+        if (input) input.value = '';
+        if (img) img.removeAttribute('src');
+      });
+    });
+
+    App.qsa('.img-upload', host).forEach(function (btn) {
+      App.on(btn, 'click', function () {
+        const key = btn.getAttribute('data-key');
+        const chooser = document.createElement('input');
+        chooser.type = 'file';
+        chooser.accept = 'image/*';
+        App.on(chooser, 'change', function () {
+          const file = chooser.files && chooser.files[0];
+          if (!file) return;
+          App.busy(btn, function () {
+            return resizeImage(file, key !== 'logo')
+              .then(function (prepared) {
+                const fd = new FormData();
+                fd.append('file', prepared.blob, prepared.name);
+                return App.apiForm('/api/settings/upload', fd);
+              })
+              .then(function (res) {
+                if (!res || !res.url) throw new Error('The server did not return an image URL.');
+                const input = document.getElementById('s-' + key);
+                const img = document.getElementById('pv-' + key);
+                if (input) input.value = res.url;
+                if (img) img.src = res.url;
+                App.toast('Image ready — click "Save all settings" to publish it.', 'ok');
+              });
+          }).catch(function (e) {
+            App.toast(e && e.message ? e.message : 'The image could not be uploaded.', 'err');
+          });
+        });
+        chooser.click();
+      });
+    });
+  }
+
+  /* Resize an image in the browser before upload: longest side capped at
+   * 2000px. PNG images that carry transparency (the logo) are re-encoded as
+   * PNG so their alpha channel survives; everything else becomes a JPEG at
+   * quality 0.85. Returns a Promise<{blob, name}>. */
+  function resizeImage(file, allowJpeg) {
+    return new Promise(function (resolve, reject) {
+      const MAX = 2000;
+      const QUALITY = 0.85;
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = function () {
+        try {
+          let w = img.naturalWidth || img.width;
+          let h = img.naturalHeight || img.height;
+          const hasAlpha = allowJpeg === false; /* caller flagged: keep transparency */
+          if (!w || !h) throw new Error('The image could not be read.');
+          const longest = Math.max(w, h);
+          if (longest > MAX) {
+            const scale = MAX / longest;
+            w = Math.max(1, Math.round(w * scale));
+            h = Math.max(1, Math.round(h * scale));
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+
+          /* Keep a PNG whenever the pixels actually carry transparency — the
+           * caller forces this for the logo, and we also honour it for any other
+           * transparent image so its alpha channel is not flattened onto black
+           * by JPEG. Opaque images become JPEG for size. */
+          const usePng = hasAlpha || canvasHasAlpha(ctx, w, h);
+          const type = usePng ? 'image/png' : 'image/jpeg';
+          const ext = usePng ? '.png' : '.jpg';
+          const base = (file.name || 'image').replace(/\.[a-z0-9]+$/i, '');
+          canvas.toBlob(function (blob) {
+            if (!blob) { reject(new Error('The image could not be processed.')); return; }
+            resolve({ blob: blob, name: base + ext });
+          }, type, usePng ? undefined : QUALITY);
+        } catch (err) {
+          URL.revokeObjectURL(url);
+          reject(err);
+        }
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        reject(new Error('That file is not a readable image.'));
+      };
+      img.src = url;
+    });
+  }
+
+  /* Does a rendered canvas contain any transparent pixel? Scans the alpha
+   * channel; returns true the moment a pixel is not fully opaque. */
+  function canvasHasAlpha(ctx, w, h) {
+    try {
+      const data = ctx.getImageData(0, 0, w, h).data;
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] < 255) return true;
+      }
+    } catch (err) {
+      /* getImageData can throw on a tainted canvas; assume no alpha then. */
+      return false;
+    }
+    return false;
   }
 
   /* The SMS sender ID must match what Termii approved.  When the server sets
@@ -2519,7 +2645,22 @@
     }
   }
 
-  /* One labelled input for a setting key. */
+  /* Which setting keys hold a picture: the explicit list plus any key whose
+   * name contains photo|image|logo|cover. Each of these gets a live preview,
+   * an Upload button and a Clear button (see settingField / wireImageFields). */
+  const IMAGE_KEYS = [
+    'logo', 'hero_image', 'governor_photo', 'commissioner_photo',
+    'free_education_banner_image', 'girl_child_banner_image',
+    'about_gallery_image_1', 'about_gallery_image_2', 'default_news_cover'
+  ];
+  const IMAGE_RE = /(photo|image|logo|cover)/i;
+  function isImageSetting(key) {
+    return IMAGE_KEYS.indexOf(key) !== -1 || IMAGE_RE.test(key);
+  }
+
+  /* One labelled input for a setting key. Image settings also get a preview,
+   * Upload and Clear button, wired up by wireImageFields() once the form is
+   * rendered (plain text/textarea/colour fields are unaffected). */
   function settingField(key, s) {
     const meta = SETTING_META[key];
     const label = meta ? meta[0] : App.labelise(key);
@@ -2527,6 +2668,24 @@
     const val = s[key] === undefined || s[key] === null ? '' : String(s[key]);
     const ph = /\[PLACEHOLDER/.test(val) ? 'Not written yet' : '';
 
+    if (isImageSetting(key)) {
+      return '<div class="field span-2" data-image-field="' + key + '">' +
+        '<label for="s-' + key + '">' + App.esc(label) + '</label>' +
+        '<div class="img-edit">' +
+          '<div class="img-preview"><img id="pv-' + key + '" alt=""' +
+            (val ? ' src="' + App.esc(val) + '"' : '') + '></div>' +
+          '<div class="img-buttons">' +
+            '<button type="button" class="btn btn-sm img-upload" data-key="' + key + '">Upload</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost img-clear" data-key="' + key + '">Clear</button>' +
+          '</div>' +
+        '</div>' +
+        '<input id="s-' + key + '" type="text" value="' + App.esc(val) + '" placeholder="' +
+        App.esc(ph) + '">' +
+        '<p class="kv-note mt-0">Paste an image URL (for example <code>/img/photos/governor.svg</code>) ' +
+          'or use Upload to store a picture. Uploaded images are resized in your browser ' +
+          '(longest side 2000px) before being saved.</p>' +
+        '</div>';
+    }
     if (kind === 'area') {
       return '<div class="field span-2"><label for="s-' + key + '">' + App.esc(label) + '</label>' +
         '<textarea id="s-' + key + '" rows="3" placeholder="' + App.esc(ph) + '">' + App.esc(val) + '</textarea></div>';
@@ -2541,11 +2700,6 @@
       App.esc(ph) + '"></div>';
   }
 
-  function uploadSlot(key, label) {
-    return '<div class="field span-2"><label for="up-' + key + '">' + App.esc(label) + '</label>' +
-      '<input id="up-' + key + '" type="file" accept="image/*">' +
-      '<p class="kv-note mt-0">Uploading fills in the <code>' + App.esc(key) + '</code> field above.</p></div>';
-  }
 
   function renderIntegrations(d) {
     const host = document.getElementById('set-integ');
@@ -2557,38 +2711,30 @@
         (d.sms.dryRun ? ' (dry-run)' : ' (live)') + '</span>' +
       '<span class="badge ' + (d.ai.configured ? 'ok' : 'muted') + '">AI: ' + App.esc(d.ai.model) + '</span>';
   }
-  /* --- save: uploads first (they return the URL to store), then the values -- */
+  /* --- save: collect every field on the page and PUT it in one request. --- *
+   * Image uploads already happened (each Upload button stored its file and
+   * wrote "/files/<id>" into its text box), so this simply sends the current
+   * values. The server then deletes any replaced/cleared old image only when
+   * nothing else still references it. */
   function saveSettings(btn) {
-    const host = document.getElementById('set-body');
-    const pending = App.qsa('[id^="up-"]', host).map(function (input) {
-      const file = input.files[0];
-      if (!file) return Promise.resolve(null);
-      const key = input.id.slice(3);
-      const fd = new FormData();
-      fd.append('file', file);
-      return App.apiForm('/api/settings/upload', fd).then(function (res) {
-        const target = document.getElementById('s-' + key);
-        if (target) target.value = res.url;
-        return key;
-      });
+    /* Collect every editable field that is actually on the page. */
+    const body = {};
+    App.qsa('#set-body [id^="s-"]').forEach(function (el) {
+      const key = el.id.slice(2);
+      if (el.type === 'checkbox') body[key] = el.checked ? '1' : '0';
+      else body[key] = el.value;
     });
 
     App.busy(btn, function () {
-      return Promise.all(pending);
-    }).then(function () {
-      /* Collect every editable field that is actually on the page. */
-      const body = {};
-      App.qsa('#set-body [id^="s-"]').forEach(function (el) {
-        const key = el.id.slice(2);
-        if (el.type === 'checkbox') body[key] = el.checked ? '1' : '0';
-        else body[key] = el.value;
-      });
       return App.api('/api/settings', { method: 'PUT', body: body });
     }).then(function (res) {
       const extra = (res.rejected || []).length
         ? ' Ignored: ' + res.rejected.join(', ') + '.'
         : '';
-      App.toast('Saved ' + res.updated.length + ' setting(s).' + extra, 'ok');
+      const cleaned = (res.cleaned || []).length
+        ? ' ' + res.cleaned.length + ' old image(s) removed.'
+        : '';
+      App.toast('Saved ' + res.updated.length + ' setting(s).' + extra + cleaned, 'ok');
       /* Colours are applied client-side, so refresh them without a reload. */
       return App.api('/api/auth/me').then(function (me) {
         App.state.settings = me.settings || {};
