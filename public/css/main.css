@@ -656,15 +656,6 @@ table.data td.actions { white-space: nowrap; }
   word-break: break-all; font-size: 13.5px;
 }
 .copy-row { display: flex; gap: 8px; margin-top: 8px; }
-/* Site-settings image fields: preview thumbnail + Upload / Clear buttons. */
-.img-edit { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 8px; }
-.img-preview {
-  width: 128px; height: 96px; flex: none; border: 1px solid var(--line); border-radius: 10px;
-  background: var(--primary-tint) center / contain no-repeat; display: flex; align-items: center;
-  justify-content: center; overflow: hidden;
-}
-.img-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.img-buttons { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .pre-scroll { max-height: 300px; overflow: auto; }
 .placeholder-note {
   background: var(--warn-tint); border: 1px dashed #d9b961; color: var(--warn);
