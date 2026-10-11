@@ -5,12 +5,15 @@
 'use strict';
 
 const express = require('express');
+const crypto = require('crypto');
+const multer = require('multer');
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { images, relPath } = require('../middleware/upload');
 const { handleErrors, clean } = require('../middleware/validate');
 const { asyncHandler } = require('../middleware/errors');
-const { writeLimiter } = require('../middleware/rateLimit');
+const { writeLimiter, uploadLimiter } = require('../middleware/rateLimit');
+const { detectFileType, sanitizeFilename } = require('../lib/filetype');
+const fileutil = require('../lib/fileutil');
 
 const router = express.Router();
 
@@ -24,6 +27,23 @@ const COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
  * wins, so the console must not be able to change it. */
 const SERVER_CONTROLLED = ['sms_sender_id'];
 
+/* Console image uploads are held in memory and stored straight into the
+ * `files` table (the same place POST /api/files uses), never on the ephemeral
+ * disk. One file, field name "file". */
+const MAX_IMAGE = 3 * 1024 * 1024;          /* 3 MB  */
+const MULTER_LIMIT = MAX_IMAGE + 64 * 1024; /* headroom for the 413 check */
+const MIN_BYTES = 64;                       /* reject empty / tiny uploads  */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MULTER_LIMIT, files: 1, fields: 8 }
+});
+
+function httpError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  err.publicMessage = message;   /* shown verbatim by the error handler */
+  return err;
+}
 /* --- Public: everything the pages need to render ---------------------- */
 router.get('/public', asyncHandler(async function (req, res) {
   const s = await db.getPublicSettings();
@@ -87,18 +107,76 @@ router.put('/', requireRole('ADMIN'), writeLimiter, asyncHandler(async function 
     return res.status(422).json({ error: 'No valid settings were sent.' });
   }
 
+  /* Capture the current value of every setting we are about to change so that,
+   * when a stored "/files/<id>" image is replaced or cleared, we can delete the
+   * now-orphaned files row — but only when nothing else still references it. */
+  const keys = Object.keys(updates);
+  const previous = {};
+  for (let i = 0; i < keys.length; i++) {
+    previous[keys[i]] = (await db.getSetting(keys[i])) || '';
+  }
+
   await db.setSettings(updates);
-  await db.logAudit(req.user, 'settings.update', 'settings', '', Object.keys(updates), req);
-  return res.json({ ok: true, updated: Object.keys(updates), rejected: rejected });
+
+  /* Release any old file that this update displaced. Ignore non-"/files/..."
+   * values so static images such as /img/photos/governor.svg keep working. */
+  const cleaned = [];
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const oldValue = previous[key];
+    if (oldValue === updates[key]) continue;            /* nothing changed   */
+    if (!fileutil.fileIdFromUrl(oldValue)) continue;    /* not a stored file */
+    const result = await fileutil.deleteFile(oldValue);
+    if (result.deleted) cleaned.push(result.id);
+  }
+
+  await db.logAudit(req.user, 'settings.update', 'settings', '', keys, req);
+  return res.json({ ok: true, updated: keys, rejected: rejected, cleaned: cleaned });
 }));
 
-/* --- Admin: branding upload (logo / governor photo / hero image) ----- */
-router.post('/upload', requireRole('ADMIN'), images.single('file'), asyncHandler(async function (req, res) {
-  if (!req.file) return res.status(400).json({ error: 'No image was uploaded.' });
-  const url = relPath(req.file.path);
-  await db.logAudit(req.user, 'settings.upload', 'settings', '', req.file.filename, req);
-  return res.json({ ok: true, url: url, filename: req.file.filename });
-}));
+
+/* --- Admin: store a site picture in the permanent files table --------- *
+ * The Admin -> Site settings Upload buttons call this. The multipart field is
+ * "file"; we confirm it is a real image by its MAGIC BYTES (never by name or
+ * extension), store the bytes in the `files` table and answer with the stable
+ * "/files/<id>" URL the setting must be saved with — exactly the shape
+ * POST /api/files returns, so the console reuses one storage format.
+ * ---------------------------------------------------------------------- */
+router.post('/upload', requireRole('ADMIN'), uploadLimiter, upload.single('file'),
+  asyncHandler(async function (req, res) {
+    if (!req.file || !req.file.buffer) {
+      throw httpError(400, 'No image was uploaded.');
+    }
+    const buf = req.file.buffer;
+    if (!Buffer.isBuffer(buf) || buf.length < MIN_BYTES) {
+      throw httpError(400, 'That file is empty or too small to be valid.');
+    }
+
+    const detected = detectFileType(buf);
+    if (!detected || detected.kind !== 'image') {
+      throw httpError(415, 'Only JPEG, PNG and WebP images are allowed.');
+    }
+    if (buf.length > MAX_IMAGE) {
+      throw httpError(413, 'Images must be 3 MB or smaller.');
+    }
+
+    /* 24 random hex chars, generated server-side. Never derived from the client. */
+    const id = crypto.randomBytes(12).toString('hex');
+    const originalName = sanitizeFilename(req.file.originalname || detected.ext);
+
+    await db.run(
+      'INSERT INTO files (id, original_name, mime, size, data, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+      [id, originalName, detected.mime, buf.length, buf, (req.user && req.user.id) || null]
+    );
+    await db.logAudit(req.user, 'settings.upload', 'files', id,
+      { name: originalName, mime: detected.mime, size: buf.length }, req);
+
+    res.status(201).json({
+      ok: true, url: '/files/' + id, id: id,
+      mime: detected.mime, size: buf.length, filename: originalName
+    });
+  })
+);
 
 /* --- Admin: mail/SMS/AI integration status (never returns secrets) --- */
 router.get('/integrations', requireRole('ADMIN'), asyncHandler(async function (req, res) {
@@ -114,3 +192,4 @@ router.get('/integrations', requireRole('ADMIN'), asyncHandler(async function (r
 }));
 
 module.exports = router;
+
