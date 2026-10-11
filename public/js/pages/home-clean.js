@@ -258,3 +258,83 @@
     })
     .catch(function () { /* network/JSON error: leave the page as-is */ });
 })();
+// === ULTIMATE PERMANENT RESTORATION & 3D GOVERNOR EFFECT ===
+document.addEventListener('DOMContentLoaded', () => {
+  fetch('/api/settings/public')
+    .then(res => res.json())
+    .then(data => {
+      const s = data.settings;
+      if (!s) return;
+
+      // THE GUARD: Only accept real image files
+      const isReal = (url) => url && typeof url === 'string' && /\.(jpg|jpeg|png|webp)$/i.test(url) && !url.includes('PLACEHOLDER');
+
+      // 1. RESTORE HERO TEXT
+      const h1 = document.getElementById('hero-heading');
+      if (h1 && s.hero_heading) h1.innerText = s.hero_heading;
+      const sub = document.getElementById('hero-sub');
+      if (sub && s.site_tagline) sub.innerText = s.site_tagline;
+
+      // 2. RESTORE GOVERNOR PORTRAIT WITH 3D EFFECT
+      const govSelectors = ['.gov-portrait img', '.hero-portrait img', '#hero img', 'img[src*="governor"]'];
+      for (let sel of govSelectors) {
+        const img = document.querySelector(sel);
+        if (img && isReal(s.governor_photo)) {
+          img.src = s.governor_photo;
+          img.style.display = 'block';
+          img.style.visibility = 'visible';
+          img.style.opacity = '1';
+          img.style.maxWidth = '400px';
+          img.style.width = '100%';
+          img.style.borderRadius = '16px';
+          
+          // 3D EFFECT STYLES
+          img.style.border = '5px solid #f2b705'; // Taraba Gold
+          img.style.boxShadow = '0 20px 40px rgba(0,0,0,0.5)';
+          img.style.transform = 'perspective(1000px) rotateY(-5deg) rotateX(2deg)';
+          img.style.transition = 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+          
+          // 3D HOVER EFFECT
+          img.onmouseenter = () => {
+            img.style.transform = 'perspective(1000px) rotateY(0deg) scale(1.05)';
+            img.style.boxShadow = '0 30px 60px rgba(0,0,0,0.6), 0 0 0 3px #f2b705';
+          };
+          img.onmouseleave = () => {
+            img.style.transform = 'perspective(1000px) rotateY(-5deg) rotateX(2deg)';
+            img.style.boxShadow = '0 20px 40px rgba(0,0,0,0.5)';
+          };
+          console.log('? Governor 3D portrait applied.');
+          break; 
+        }
+      }
+
+      // 3. RESTORE COMMISSIONER PHOTO & MESSAGE
+      const commImg = document.querySelector('.commissioner-photo img, #comm-photo img, img[src*="commissioner"]');
+      if (commImg && isReal(s.commissioner_photo)) {
+        commImg.src = s.commissioner_photo;
+        commImg.style.display = 'block';
+      }
+      const commMsg = document.querySelector('.commissioner-message, .gov-message');
+      if (commMsg && s.commissioner_message && !s.commissioner_message.includes('PLACEHOLDER')) {
+        commMsg.innerText = s.commissioner_message;
+      }
+
+      // 4. RESTORE MODEL SCHOOLS & NEWS IMAGES
+      const gal1 = document.querySelector('.about-gallery-1 img, #gallery-img-1');
+      if (gal1 && isReal(s.about_gallery_image_1)) gal1.src = s.about_gallery_image_1;
+      
+      const gal2 = document.querySelector('.about-gallery-2 img, #gallery-img-2');
+      if (gal2 && isReal(s.about_gallery_image_2)) gal2.src = s.about_gallery_image_2;
+
+      document.querySelectorAll('.news-card img, .news-cover img').forEach(img => {
+        if (img.src.includes('.svg') || img.src.includes('placeholder')) {
+          img.src = isReal(s.default_news_cover) ? s.default_news_cover : '/img/photos/model-school-1.jpg';
+          img.style.display = 'block';
+          img.style.objectFit = 'cover';
+        }
+      });
+
+      console.log('?? ULTIMATE RESTORATION COMPLETE! All features are now permanent.');
+    })
+    .catch(err => console.error('? Failed to load settings:', err));
+});
