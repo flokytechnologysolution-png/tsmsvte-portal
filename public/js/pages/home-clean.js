@@ -371,3 +371,41 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('? Text visibility permanently fixed.');
     });
 });
+
+// === PERMANENT PUBLIC VIEW FIX ===
+document.addEventListener('DOMContentLoaded', () => {
+  fetch('/api/settings/public')
+    .then(res => res.json())
+    .then(data => {
+      const s = data.settings;
+      if (!s) return;
+
+      // Force Text
+      const h1 = document.getElementById('hero-heading');
+      if (h1 && s.hero_heading) {
+        h1.innerText = s.hero_heading;
+        h1.style.cssText = 'display:block!important; visibility:visible!important; opacity:1!important; color:#ffffff!important; font-size:clamp(2rem, 4vw, 3.5rem)!important; font-weight:800!important; text-shadow:3px 3px 10px rgba(0,0,0,0.9)!important; z-index:100!important;';
+      }
+      const sub = document.getElementById('hero-sub');
+      if (sub && s.site_tagline) {
+        sub.innerText = s.site_tagline;
+        sub.style.cssText = 'display:block!important; visibility:visible!important; opacity:1!important; color:#f0f0f0!important; font-size:1.2rem!important; text-shadow:2px 2px 5px rgba(0,0,0,0.9)!important; z-index:100!important;';
+      }
+
+      // Force Governor Photo
+      const govImg = document.querySelector('.gov-portrait img, .hero-portrait img');
+      if (govImg && s.governor_photo) {
+        govImg.src = s.governor_photo;
+        govImg.style.cssText = 'display:block!important; visibility:visible!important; opacity:1!important; max-width:400px!important; border-radius:16px!important; border:5px solid #f2b705!important; box-shadow:0 20px 40px rgba(0,0,0,0.5)!important;';
+      }
+
+      // Force Commissioner Photo
+      const commImg = document.querySelector('.commissioner-photo img, #comm-photo img');
+      if (commImg && s.commissioner_photo) {
+        commImg.src = s.commissioner_photo;
+        commImg.style.display = 'block';
+      }
+
+      console.log('? Permanent public view fix applied.');
+    });
+});
