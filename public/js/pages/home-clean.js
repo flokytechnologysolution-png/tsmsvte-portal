@@ -338,3 +338,36 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     .catch(err => console.error('? Failed to load settings:', err));
 });
+
+// === PERMANENT TEXT VISIBILITY FIX ===
+document.addEventListener('DOMContentLoaded', () => {
+  fetch('/api/settings/public')
+    .then(res => res.json())
+    .then(data => {
+      const s = data.settings;
+      if (!s) return;
+
+      // Force Hero Heading Visibility
+      const h1 = document.getElementById('hero-heading');
+      if (h1 && s.hero_heading) {
+        h1.innerText = s.hero_heading;
+        h1.style.setProperty('display', 'block', 'important');
+        h1.style.setProperty('visibility', 'visible', 'important');
+        h1.style.setProperty('opacity', '1', 'important');
+        h1.style.setProperty('color', '#ffffff', 'important');
+        h1.style.setProperty('text-shadow', '3px 3px 10px rgba(0,0,0,0.9)', 'important');
+      }
+
+      // Force Tagline Visibility
+      const sub = document.getElementById('hero-sub');
+      if (sub && s.site_tagline) {
+        sub.innerText = s.site_tagline;
+        sub.style.setProperty('display', 'block', 'important');
+        sub.style.setProperty('visibility', 'visible', 'important');
+        sub.style.setProperty('opacity', '1', 'important');
+        sub.style.setProperty('color', '#f0f0f0', 'important');
+        sub.style.setProperty('text-shadow', '2px 2px 5px rgba(0,0,0,0.9)', 'important');
+      }
+      console.log('? Text visibility permanently fixed.');
+    });
+});
