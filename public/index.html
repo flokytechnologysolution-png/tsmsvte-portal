@@ -285,5 +285,49 @@
   <script src="/js/pages/home-clean.js"></script>
   <script src="/js/pages/hero-parallax.js"></script>
   <script src="/js/chat.js"></script>
-</body>
+
+<!-- === NUCLEAR PERMANENT FIX === -->
+<style>
+  #hero-heading, #hero-sub, .gov-portrait img, .commissioner-photo img {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  #hero-heading { color: #ffffff !important; text-shadow: 2px 2px 4px rgba(0,0,0,0.8) !important; }
+  #hero-sub { color: #f0f0f0 !important; }
+  .gov-portrait img { border: 4px solid #f2b705 !important; border-radius: 12px !important; max-width: 400px !important; }
+</style>
+
+<script>
+  (function() {
+    fetch('/api/settings/public')
+      .then(res => res.json())
+      .then(data => {
+        const s = data.settings;
+        if (!s) return;
+        
+        // Force Text
+        const h1 = document.getElementById('hero-heading');
+        if (h1) h1.innerText = s.hero_heading || 'Welcome';
+        const sub = document.getElementById('hero-sub');
+        if (sub) sub.innerText = s.site_tagline || '';
+        
+        // Force Images
+        const govImg = document.querySelector('.gov-portrait img');
+        if (govImg && s.governor_photo) govImg.src = s.governor_photo;
+        
+        const commImg = document.querySelector('.commissioner-photo img');
+        if (commImg && s.commissioner_photo) commImg.src = s.commissioner_photo;
+        
+        const commName = document.querySelector('.commissioner-name');
+        if (commName && s.commissioner_name) commName.innerText = s.commissioner_name;
+        
+        const commTitle = document.querySelector('.commissioner-title');
+        if (commTitle && s.commissioner_title) commTitle.innerText = s.commissioner_title;
+        
+        console.log('? Nuclear fix applied.');
+      });
+  })();
+</script>
+<!-- === END NUCLEAR FIX === --></body>
 </html>
