@@ -338,35 +338,3 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     .catch(err => console.error('? Failed to load settings:', err));
 });
-
-// === SINGLE STABLE FIX (No conflicts) ===
-document.addEventListener('DOMContentLoaded', () => {
-  fetch('/api/settings/public')
-    .then(res => res.json())
-    .then(data => {
-      const s = data.settings;
-      if (!s) return;
-
-      // Text
-      const h1 = document.getElementById('hero-heading');
-      if (h1 && s.hero_heading) h1.innerText = s.hero_heading;
-      const sub = document.getElementById('hero-sub');
-      if (sub && s.site_tagline) sub.innerText = s.site_tagline;
-
-      // Governor Photo
-      const govImg = document.querySelector('.gov-portrait img');
-      if (govImg && s.governor_photo) govImg.src = s.governor_photo;
-
-      // Commissioner Photo & Info
-      const commImg = document.querySelector('.commissioner-photo img');
-      if (commImg && s.commissioner_photo) commImg.src = s.commissioner_photo;
-      
-      const commName = document.querySelector('.commissioner-name');
-      if (commName && s.commissioner_name) commName.innerText = s.commissioner_name;
-      
-      const commTitle = document.querySelector('.commissioner-title');
-      if (commTitle && s.commissioner_title) commTitle.innerText = s.commissioner_title;
-
-      console.log('? Stable fix applied. No flickering.');
-    });
-});
