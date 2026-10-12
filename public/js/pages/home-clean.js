@@ -502,3 +502,101 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     .catch(err => console.error('? Force fix failed:', err));
 });
+
+// === COMPLETE PERMANENT FIX: PICTURES + COMMISSIONER + SCHOOLS ===
+document.addEventListener('DOMContentLoaded', () => {
+  fetch('/api/settings/public')
+    .then(res => res.json())
+    .then(data => {
+      const s = data.settings;
+      if (!s) return;
+      console.log('?? COMPLETE FIX APPLIED');
+
+      // 1. FORCE ALL TEXT
+      const h1 = document.getElementById('hero-heading');
+      if (h1 && s.hero_heading) {
+        h1.innerText = s.hero_heading;
+        h1.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;color:#ffffff!important;font-size:clamp(2rem,4vw,3.5rem)!important;font-weight:800!important;text-shadow:3px 3px 10px rgba(0,0,0,0.9)!important;z-index:1000!important;';
+      }
+      const sub = document.getElementById('hero-sub');
+      if (sub && s.site_tagline) {
+        sub.innerText = s.site_tagline;
+        sub.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;color:#f0f0f0!important;font-size:1.2rem!important;text-shadow:2px 2px 5px rgba(0,0,0,0.9)!important;';
+      }
+
+      // 2. FORCE GOVERNOR PHOTO
+      const govImg = document.querySelector('.gov-portrait img, .hero-portrait img');
+      if (govImg && s.governor_photo) {
+        govImg.src = s.governor_photo;
+        govImg.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;max-width:400px!important;width:100%!important;border-radius:16px!important;border:5px solid #f2b705!important;box-shadow:0 20px 40px rgba(0,0,0,0.5)!important;';
+      }
+
+      // 3. FORCE COMMISSIONER PHOTO & TITLE
+      const commImg = document.querySelector('.commissioner-photo img, #comm-photo img, .leader-card img');
+      if (commImg && s.commissioner_photo) {
+        commImg.src = s.commissioner_photo;
+        commImg.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;max-width:100%!important;border-radius:12px!important;';
+        console.log('? Commissioner photo forced');
+      }
+      
+      // Force Commissioner Name & Title
+      const commName = document.querySelector('.commissioner-name, #comm-name, .leader-card h3');
+      if (commName && s.commissioner_name) {
+        commName.innerText = s.commissioner_name;
+        commName.style.display = 'block';
+      }
+      const commTitle = document.querySelector('.commissioner-title, #comm-title, .leader-card .title');
+      if (commTitle && s.commissioner_title) {
+        commTitle.innerText = s.commissioner_title;
+        commTitle.style.display = 'block';
+      }
+      console.log('? Commissioner info forced');
+
+      // 4. FORCE ALL OTHER IMAGES
+      const images = {
+        'free-edu': s.free_education_banner_image,
+        'girl-child': s.girl_child_banner_image,
+        'gallery-1': s.about_gallery_image_1,
+        'gallery-2': s.about_gallery_image_2
+      };
+      
+      Object.keys(images).forEach(key => {
+        if (images[key]) {
+          const img = document.querySelector(`img[src*="${key}"], #${key}-img, .${key} img`);
+          if (img) {
+            img.src = images[key];
+            img.style.display = 'block';
+          }
+        }
+      });
+
+      // 5. FORCE NEWS IMAGES
+      document.querySelectorAll('.news-card img').forEach(img => {
+        if (img.src.includes('.svg') || img.naturalWidth === 0) {
+          img.src = s.default_news_cover || s.commissioner_photo || '/img/photos/model-school-1.jpg';
+          img.style.display = 'block';
+        }
+      });
+
+      // 6. CHECK AND LOAD SCHOOLS
+      fetch('/api/schools')
+        .then(res => res.json())
+        .then(schools => {
+          if (schools && schools.length > 0) {
+            console.log('? Schools loaded:', schools.length);
+            // Schools will auto-render if the section exists
+          } else {
+            console.warn('?? NO SCHOOLS IN DATABASE - Add schools via Admin Dashboard');
+            // Show a message if no schools
+            const schoolsSection = document.querySelector('.schools-directory, #schools');
+            if (schoolsSection) {
+              schoolsSection.innerHTML += '<p style="text-align:center;padding:20px;color:#666;">No schools registered yet. Check back soon or contact the ministry to register a school.</p>';
+            }
+          }
+        })
+        .catch(err => console.error('Schools API error:', err));
+
+      console.log('?? COMPLETE FIX DONE - All content forced!');
+    })
+    .catch(err => console.error('? Complete fix failed:', err));
+});
