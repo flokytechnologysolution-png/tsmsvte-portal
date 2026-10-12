@@ -206,3 +206,7 @@ process.on('unhandledRejection', function (err) {
 });
 
 module.exports = app;
+/* Exposed for tests so they can close the listener cleanly and exit
+ * naturally (an open server handle alone keeps the Node event loop alive).
+ * `node server.js` behaviour is unchanged: the server still listens. */
+module.exports.server = server;

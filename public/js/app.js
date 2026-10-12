@@ -503,6 +503,29 @@
     };
   }
 
+  /* Does this look like a usable public-settings object (at least one key)? */
+  function hasSettings(s) {
+    return !!s && typeof s === 'object' && Object.keys(s).length > 0;
+  }
+
+  /* Fetch GET /api/settings/public as the fallback source. An empty/failed
+   * response must NEVER erase settings we already hold — we only replace them
+   * with a non-empty payload. Returns true when usable settings were applied. */
+  function loadPublicSettings() {
+    return api('/api/settings/public').then(function (data) {
+      const s = data && data.settings;
+      if (hasSettings(s)) {
+        state.settings = s;
+        applyTheme();
+        return true;
+      }
+      return hasSettings(state.settings);
+    }).catch(function () {
+      /* keep whatever we already have */
+      return hasSettings(state.settings);
+    });
+  }
+
   function fetchSession() {
     /* /api/auth/me returns the user, the linked staff record, unread mail and
      * the public settings in one shot — even for anonymous visitors. */
@@ -510,14 +533,18 @@
       state.user = data.user || null;
       state.staff = data.staff || null;
       state.unreadMail = data.unread_mail || 0;
-      state.settings = data.settings || {};
-      applyTheme();
+      const s = data.settings;
+      if (hasSettings(s)) {
+        state.settings = s;
+        applyTheme();
+        return;
+      }
+      /* Session answered but carried no usable settings (older/cached build or a
+       * partial payload): pull the public settings rather than rendering empty. */
+      return loadPublicSettings();
     }).catch(function () {
       /* Offline / API down: fall back to public settings so the shell still renders. */
-      return api('/api/settings/public').then(function (data) {
-        state.settings = (data && data.settings) || {};
-        applyTheme();
-      }).catch(function () { /* keep defaults */ });
+      return loadPublicSettings();
     });
   }
 

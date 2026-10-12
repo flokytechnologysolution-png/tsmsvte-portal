@@ -47,7 +47,10 @@ function httpError(status, message) {
 /* --- Public: everything the pages need to render ---------------------- */
 router.get('/public', asyncHandler(async function (req, res) {
   const s = await db.getPublicSettings();
-  res.set('Cache-Control', 'public, max-age=60');
+  /* Always revalidate: an admin edit must be visible on the next page load.
+   * (Was `public, max-age=60`, which served up to a minute of stale settings
+   * after a save. Only this endpoint changes — everything else is untouched.) */
+  res.set('Cache-Control', 'no-cache');
   res.json({ settings: s });
 }));
 

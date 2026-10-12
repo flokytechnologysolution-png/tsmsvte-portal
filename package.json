@@ -9,6 +9,7 @@
     "start:prod": "node tools/start-prod.js",
     "dev": "node --watch server.js",
     "seed": "node tools/seed.js",
+    "test:home": "node tools/test-homepage.js",
     "backup": "node tools/backup.js",
     "icons": "node tools/make-icons.js",
     "placeholders": "node tools/make-placeholders.js"

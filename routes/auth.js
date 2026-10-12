@@ -23,7 +23,25 @@ router.get('/csrf', function (req, res) {
 });
 
 router.get('/me', asyncHandler(async function (req, res) {
-  if (!req.user) return res.json({ user: null });
+  /* Public settings are returned for EVERY caller — anonymous included — so the
+   * frontend always has usable content to render (app.js fetchSession reads
+   * data.settings on a successful response and must never see an empty object).
+   * getPublicSettings() strips private/admin-only keys (privacy_notice,
+   * admin_chat_status, admin_working_hours, sms_*) so this is exactly the same
+   * data the anonymous GET /api/settings/public endpoint already exposes. */
+  let settings = {};
+  try {
+    settings = await db.getPublicSettings();
+  } catch (err) {
+    /* Settings are non-critical: keep the session answer usable and let the
+     * client fall back to GET /api/settings/public rather than failing the
+     * whole request. Never surface DB internals to the client. */
+    console.error('[auth/me] getPublicSettings failed:', err && err.message);
+    settings = {};
+  }
+
+  if (!req.user) return res.json({ user: null, settings: settings });
+
   const staff = await db.get('SELECT * FROM staff WHERE user_id = ?', [req.user.id]);
   const unreadRow = await db.get(
     'SELECT COUNT(*) AS n FROM message_recipients WHERE user_id = ? AND is_read = 0 AND is_deleted = 0',
@@ -34,7 +52,7 @@ router.get('/me', asyncHandler(async function (req, res) {
     user: auth.publicUser(req.user),
     staff: staff || null,
     unread_mail: unread,
-    settings: await db.getPublicSettings()
+    settings: settings
   });
 }));
 

@@ -22,47 +22,32 @@
     img.src = src;
   }
 
+  /* Only settings home-clean.js does NOT already render live here. Shared fields
+   * (hero heading/sub, banner text, governor name/title, gallery photos,
+   * commissioner photo/message, contact list, about functions) are rendered by
+   * home-clean.js clean() and its image-repair passes; writing them again here
+   * would be a second, competing renderer for the same DOM nodes. */
   function renderSettings(s) {
-    put('hero-heading', s.hero_heading);
-    put('hero-sub', s.hero_subheading);
     put('banner1-title', s.free_education_banner_title);
-    put('banner1-text', s.free_education_banner_text);
     put('banner2-title', s.girl_child_banner_title);
-    put('banner2-text', s.girl_child_banner_text);
 
     /* programme banners */
     setPhoto('banner1-img', s.free_education_banner_image);
     setPhoto('banner2-img', s.girl_child_banner_image);
 
-    /* governor */
-    setPhoto('gov-photo', s.governor_photo);
-    put('gov-name', s.governor_name);
-    put('gov-title', s.governor_title);
+    /* governor: clean() only hides these when empty; it does not populate them */
     put('gov-vision-free', s.governor_vision_free_education);
     put('gov-vision-girl', s.governor_vision_girl_child);
     put('gov-note', s.governor_vision_note);
 
     /* commissioner */
-    setPhoto('comm-photo', s.commissioner_photo);
     put('comm-name', s.commissioner_name);
     put('comm-title', s.commissioner_title);
-    put('comm-message', s.commissioner_message);
 
-    /* gallery */
-    setPhoto('gal1-img', s.about_gallery_image_1);
-    setPhoto('gal2-img', s.about_gallery_image_2);
-
+    /* about */
     put('about-mission', s.mission);
     put('about-vision', s.vision);
     put('about-history', s.about_history);
-
-    const fns = document.getElementById('about-functions');
-    if (fns) {
-      const lines = String(s.about_functions || '').split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
-      fns.innerHTML = lines.length
-        ? lines.map(function (l) { return '<li>' + App.esc(l) + '</li>'; }).join('')
-        : '<li class="muted">' + App.esc(s.about_functions || 'Not yet entered.') + '</li>';
-    }
 
     /* Hero portrait: the governor card uses governor_photo when the ministry
        has uploaded a real photo; the .svg default is treated as "not set" so
@@ -87,20 +72,6 @@
       } else {
         heroCap.classList.add('hidden');
       }
-    }
-
-    const contact = document.getElementById('contact-list');
-    if (contact) {
-      const rows = [
-        ['Address', s.contact_address],
-        ['Phone', s.contact_phone],
-        ['Email', s.contact_email],
-        ['Office hours', s.office_hours]
-      ];
-      contact.innerHTML = rows.map(function (r) {
-        if (!r[1]) return '';
-        return '<div class="r"><span class="k">' + App.esc(r[0]) + '</span><span class="v">' + App.esc(r[1]) + '</span></div>';
-      }).join('');
     }
   }
 

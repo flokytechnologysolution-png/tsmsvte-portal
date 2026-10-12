@@ -32,7 +32,25 @@
     if (el) el.textContent = text || '';
   }
 
+  /* Is there any real, usable public content in this settings object?  When the
+   * settings have simply not loaded yet (absent, empty, or all-blank) we must
+   * NOT hide the homepage — an empty response should never erase a rendered
+   * page.  Returns false for {}, null, undefined, and objects whose values are
+   * all empty/placeholder strings. */
+  function usableSettings(s) {
+    if (!s || typeof s !== 'object') return false;
+    var keys = Object.keys(s);
+    if (!keys.length) return false;
+    for (var i = 0; i < keys.length; i++) {
+      if (real(s[keys[i]])) return true;
+    }
+    return false;
+  }
+
   function clean(s) {
+    /* Non-destructive guard: no usable settings yet -> touch nothing. */
+    if (!usableSettings(s)) return;
+
     /* hero */
     var name = real(s.ministry_name);
     var heading = real(s.hero_heading) || (name ? 'Welcome to the ' + name : '');

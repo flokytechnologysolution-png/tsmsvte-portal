@@ -10,7 +10,7 @@
  *   - Other assets (css/js/icons) are network-first with a cache fallback.
  *   - API calls and WebSocket upgrades are never cached.
  *
- * RELEASE CHECKLIST — bump CACHE below (e.g. v2 -> v3) on EVERY release. The
+ * RELEASE CHECKLIST — bump CACHE below (e.g. v3 -> v4) on EVERY release. The
  * activate handler deletes every cache whose name != CACHE, so raising the
  * version retires the previous release's cache for all visitors at once.
  */
@@ -21,7 +21,7 @@
  * Naming it per-release is what lets the activate handler below safely purge
  * the old release's cache without touching the new one.
  * ------------------------------------------------------------------------ */
-const CACHE = 'tsmsvte-portal-v2';
+const CACHE = 'tsmsvte-portal-v3';
 
 const SHELL = [
   '/',
