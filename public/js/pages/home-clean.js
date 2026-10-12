@@ -339,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
     .catch(err => console.error('? Failed to load settings:', err));
 });
 
-// === PERMANENT TEXT VISIBILITY FIX ===
+// === SINGLE STABLE FIX (No conflicts) ===
 document.addEventListener('DOMContentLoaded', () => {
   fetch('/api/settings/public')
     .then(res => res.json())
@@ -347,256 +347,26 @@ document.addEventListener('DOMContentLoaded', () => {
       const s = data.settings;
       if (!s) return;
 
-      // Force Hero Heading Visibility
+      // Text
       const h1 = document.getElementById('hero-heading');
-      if (h1 && s.hero_heading) {
-        h1.innerText = s.hero_heading;
-        h1.style.setProperty('display', 'block', 'important');
-        h1.style.setProperty('visibility', 'visible', 'important');
-        h1.style.setProperty('opacity', '1', 'important');
-        h1.style.setProperty('color', '#ffffff', 'important');
-        h1.style.setProperty('text-shadow', '3px 3px 10px rgba(0,0,0,0.9)', 'important');
-      }
-
-      // Force Tagline Visibility
+      if (h1 && s.hero_heading) h1.innerText = s.hero_heading;
       const sub = document.getElementById('hero-sub');
-      if (sub && s.site_tagline) {
-        sub.innerText = s.site_tagline;
-        sub.style.setProperty('display', 'block', 'important');
-        sub.style.setProperty('visibility', 'visible', 'important');
-        sub.style.setProperty('opacity', '1', 'important');
-        sub.style.setProperty('color', '#f0f0f0', 'important');
-        sub.style.setProperty('text-shadow', '2px 2px 5px rgba(0,0,0,0.9)', 'important');
-      }
-      console.log('? Text visibility permanently fixed.');
-    });
-});
+      if (sub && s.site_tagline) sub.innerText = s.site_tagline;
 
-// === PERMANENT PUBLIC VIEW FIX ===
-document.addEventListener('DOMContentLoaded', () => {
-  fetch('/api/settings/public')
-    .then(res => res.json())
-    .then(data => {
-      const s = data.settings;
-      if (!s) return;
+      // Governor Photo
+      const govImg = document.querySelector('.gov-portrait img');
+      if (govImg && s.governor_photo) govImg.src = s.governor_photo;
 
-      // Force Text
-      const h1 = document.getElementById('hero-heading');
-      if (h1 && s.hero_heading) {
-        h1.innerText = s.hero_heading;
-        h1.style.cssText = 'display:block!important; visibility:visible!important; opacity:1!important; color:#ffffff!important; font-size:clamp(2rem, 4vw, 3.5rem)!important; font-weight:800!important; text-shadow:3px 3px 10px rgba(0,0,0,0.9)!important; z-index:100!important;';
-      }
-      const sub = document.getElementById('hero-sub');
-      if (sub && s.site_tagline) {
-        sub.innerText = s.site_tagline;
-        sub.style.cssText = 'display:block!important; visibility:visible!important; opacity:1!important; color:#f0f0f0!important; font-size:1.2rem!important; text-shadow:2px 2px 5px rgba(0,0,0,0.9)!important; z-index:100!important;';
-      }
-
-      // Force Governor Photo
-      const govImg = document.querySelector('.gov-portrait img, .hero-portrait img');
-      if (govImg && s.governor_photo) {
-        govImg.src = s.governor_photo;
-        govImg.style.cssText = 'display:block!important; visibility:visible!important; opacity:1!important; max-width:400px!important; border-radius:16px!important; border:5px solid #f2b705!important; box-shadow:0 20px 40px rgba(0,0,0,0.5)!important;';
-      }
-
-      // Force Commissioner Photo
-      const commImg = document.querySelector('.commissioner-photo img, #comm-photo img');
-      if (commImg && s.commissioner_photo) {
-        commImg.src = s.commissioner_photo;
-        commImg.style.display = 'block';
-      }
-
-      console.log('? Permanent public view fix applied.');
-    });
-});
-
-// === ULTIMATE PERMANENT FORCE FIX - ALL CONTENT ===
-document.addEventListener('DOMContentLoaded', () => {
-  fetch('/api/settings/public')
-    .then(res => res.json())
-    .then(data => {
-      const s = data.settings;
-      if (!s) return;
-      console.log('?? ULTIMATE FORCE FIX APPLIED');
-
-      // FORCE HERO TEXT
-      const h1 = document.getElementById('hero-heading');
-      if (h1 && s.hero_heading) {
-        h1.innerText = s.hero_heading;
-        h1.style.setProperty('display', 'block', 'important');
-        h1.style.setProperty('visibility', 'visible', 'important');
-        h1.style.setProperty('opacity', '1', 'important');
-        h1.style.setProperty('color', '#ffffff', 'important');
-        h1.style.setProperty('font-size', 'clamp(2rem, 4vw, 3.5rem)', 'important');
-        h1.style.setProperty('font-weight', '800', 'important');
-        h1.style.setProperty('text-shadow', '3px 3px 10px rgba(0,0,0,0.9)', 'important');
-        h1.style.setProperty('z-index', '1000', 'important');
-        h1.style.setProperty('position', 'relative', 'important');
-      }
-
-      const sub = document.getElementById('hero-sub');
-      if (sub && s.site_tagline) {
-        sub.innerText = s.site_tagline;
-        sub.style.setProperty('display', 'block', 'important');
-        sub.style.setProperty('visibility', 'visible', 'important');
-        sub.style.setProperty('opacity', '1', 'important');
-        sub.style.setProperty('color', '#f0f0f0', 'important');
-        sub.style.setProperty('font-size', '1.2rem', 'important');
-        sub.style.setProperty('text-shadow', '2px 2px 5px rgba(0,0,0,0.9)', 'important');
-        sub.style.setProperty('z-index', '1000', 'important');
-      }
-
-      // FORCE GOVERNOR PHOTO
-      const govImg = document.querySelector('.gov-portrait img, .hero-portrait img');
-      if (govImg && s.governor_photo) {
-        govImg.src = s.governor_photo;
-        govImg.style.setProperty('display', 'block', 'important');
-        govImg.style.setProperty('visibility', 'visible', 'important');
-        govImg.style.setProperty('opacity', '1', 'important');
-        govImg.style.setProperty('max-width', '400px', 'important');
-        govImg.style.setProperty('width', '100%', 'important');
-        govImg.style.setProperty('border-radius', '16px', 'important');
-        govImg.style.setProperty('border', '5px solid #f2b705', 'important');
-        govImg.style.setProperty('box-shadow', '0 20px 40px rgba(0,0,0,0.5)', 'important');
-      }
-
-      // FORCE COMMISSIONER PHOTO
-      const commImg = document.querySelector('.commissioner-photo img, #comm-photo img, img[src*="commissioner"]');
-      if (commImg && s.commissioner_photo) {
-        commImg.src = s.commissioner_photo;
-        commImg.style.setProperty('display', 'block', 'important');
-        commImg.style.setProperty('visibility', 'visible', 'important');
-        commImg.style.setProperty('opacity', '1', 'important');
-        commImg.style.setProperty('max-width', '100%', 'important');
-        commImg.style.setProperty('border-radius', '12px', 'important');
-        console.log('? Commissioner photo forced');
-      }
-
-      // FORCE ALL IMAGES
-      document.querySelectorAll('img').forEach(img => {
-        if (img.src.includes('.svg') || img.src.includes('placeholder') || img.naturalWidth === 0) {
-          if (img.closest('.commissioner') || img.id.includes('comm')) {
-            img.src = s.commissioner_photo;
-          } else if (img.closest('.news')) {
-            img.src = s.default_news_cover || s.commissioner_photo || '/img/photos/model-school-1.jpg';
-          } else if (img.closest('.gallery') || img.id.includes('gal')) {
-            img.src = s.about_gallery_image_1 || '/img/photos/model-school-1.jpg';
-          }
-          img.style.display = 'block';
-        }
-      });
-
-      // FORCE NEWS CARDS TO SHOW
-      setTimeout(() => {
-        fetch('/api/news')
-          .then(res => res.json())
-          .then(news => {
-            if (news && news.length > 0) {
-              console.log('? News loaded:', news.length, 'articles');
-              // Trigger a re-render if needed
-              window.location.reload();
-            }
-          });
-      }, 2000);
-
-    })
-    .catch(err => console.error('? Force fix failed:', err));
-});
-
-// === COMPLETE PERMANENT FIX: PICTURES + COMMISSIONER + SCHOOLS ===
-document.addEventListener('DOMContentLoaded', () => {
-  fetch('/api/settings/public')
-    .then(res => res.json())
-    .then(data => {
-      const s = data.settings;
-      if (!s) return;
-      console.log('?? COMPLETE FIX APPLIED');
-
-      // 1. FORCE ALL TEXT
-      const h1 = document.getElementById('hero-heading');
-      if (h1 && s.hero_heading) {
-        h1.innerText = s.hero_heading;
-        h1.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;color:#ffffff!important;font-size:clamp(2rem,4vw,3.5rem)!important;font-weight:800!important;text-shadow:3px 3px 10px rgba(0,0,0,0.9)!important;z-index:1000!important;';
-      }
-      const sub = document.getElementById('hero-sub');
-      if (sub && s.site_tagline) {
-        sub.innerText = s.site_tagline;
-        sub.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;color:#f0f0f0!important;font-size:1.2rem!important;text-shadow:2px 2px 5px rgba(0,0,0,0.9)!important;';
-      }
-
-      // 2. FORCE GOVERNOR PHOTO
-      const govImg = document.querySelector('.gov-portrait img, .hero-portrait img');
-      if (govImg && s.governor_photo) {
-        govImg.src = s.governor_photo;
-        govImg.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;max-width:400px!important;width:100%!important;border-radius:16px!important;border:5px solid #f2b705!important;box-shadow:0 20px 40px rgba(0,0,0,0.5)!important;';
-      }
-
-      // 3. FORCE COMMISSIONER PHOTO & TITLE
-      const commImg = document.querySelector('.commissioner-photo img, #comm-photo img, .leader-card img');
-      if (commImg && s.commissioner_photo) {
-        commImg.src = s.commissioner_photo;
-        commImg.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;max-width:100%!important;border-radius:12px!important;';
-        console.log('? Commissioner photo forced');
-      }
+      // Commissioner Photo & Info
+      const commImg = document.querySelector('.commissioner-photo img');
+      if (commImg && s.commissioner_photo) commImg.src = s.commissioner_photo;
       
-      // Force Commissioner Name & Title
-      const commName = document.querySelector('.commissioner-name, #comm-name, .leader-card h3');
-      if (commName && s.commissioner_name) {
-        commName.innerText = s.commissioner_name;
-        commName.style.display = 'block';
-      }
-      const commTitle = document.querySelector('.commissioner-title, #comm-title, .leader-card .title');
-      if (commTitle && s.commissioner_title) {
-        commTitle.innerText = s.commissioner_title;
-        commTitle.style.display = 'block';
-      }
-      console.log('? Commissioner info forced');
-
-      // 4. FORCE ALL OTHER IMAGES
-      const images = {
-        'free-edu': s.free_education_banner_image,
-        'girl-child': s.girl_child_banner_image,
-        'gallery-1': s.about_gallery_image_1,
-        'gallery-2': s.about_gallery_image_2
-      };
+      const commName = document.querySelector('.commissioner-name');
+      if (commName && s.commissioner_name) commName.innerText = s.commissioner_name;
       
-      Object.keys(images).forEach(key => {
-        if (images[key]) {
-          const img = document.querySelector(`img[src*="${key}"], #${key}-img, .${key} img`);
-          if (img) {
-            img.src = images[key];
-            img.style.display = 'block';
-          }
-        }
-      });
+      const commTitle = document.querySelector('.commissioner-title');
+      if (commTitle && s.commissioner_title) commTitle.innerText = s.commissioner_title;
 
-      // 5. FORCE NEWS IMAGES
-      document.querySelectorAll('.news-card img').forEach(img => {
-        if (img.src.includes('.svg') || img.naturalWidth === 0) {
-          img.src = s.default_news_cover || s.commissioner_photo || '/img/photos/model-school-1.jpg';
-          img.style.display = 'block';
-        }
-      });
-
-      // 6. CHECK AND LOAD SCHOOLS
-      fetch('/api/schools')
-        .then(res => res.json())
-        .then(schools => {
-          if (schools && schools.length > 0) {
-            console.log('? Schools loaded:', schools.length);
-            // Schools will auto-render if the section exists
-          } else {
-            console.warn('?? NO SCHOOLS IN DATABASE - Add schools via Admin Dashboard');
-            // Show a message if no schools
-            const schoolsSection = document.querySelector('.schools-directory, #schools');
-            if (schoolsSection) {
-              schoolsSection.innerHTML += '<p style="text-align:center;padding:20px;color:#666;">No schools registered yet. Check back soon or contact the ministry to register a school.</p>';
-            }
-          }
-        })
-        .catch(err => console.error('Schools API error:', err));
-
-      console.log('?? COMPLETE FIX DONE - All content forced!');
-    })
-    .catch(err => console.error('? Complete fix failed:', err));
+      console.log('? Stable fix applied. No flickering.');
+    });
 });
