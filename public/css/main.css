@@ -813,6 +813,24 @@ table.data td.actions { white-space: nowrap; }
   content:'';position:absolute;top:34px;left:-46px;width:46px;
   border-top:2px solid var(--org-line)}
 .org-side-list{display:flex;flex-direction:column;gap:14px;width:212px}
+/* ---------------------- leadership top row ------------------------------ */
+/* Extra leadership roots (SGS, the Commissioner) sit ABOVE the chain, on a
+ * rail of their own that drops down into the Permanent Secretary — the order
+ * of the ministry's chart diagram. Hidden connectors on small screens. */
+.org-leaders{position:relative;padding-bottom:30px}
+.org-leaders-row{
+  position:relative;width:max-content;margin:0 auto;
+  display:flex;gap:18px;padding-bottom:34px}
+.org-leaders-row::after{            /* the horizontal rail across the leaders */
+  content:'';position:absolute;bottom:0;left:0;right:0;
+  border-top:2px solid var(--org-line)}
+.org-leaders-item{position:relative}
+.org-leaders-item::after{           /* stub from each card down to the rail */
+  content:'';position:absolute;top:100%;left:50%;height:34px;
+  border-left:2px solid var(--org-line)}
+.org-leaders::before{               /* drop from the rail centre into the chain */
+  content:'';position:absolute;bottom:0;left:50%;height:30px;
+  border-left:2px solid var(--org-line)}
 /* ------------------------------ cards --------------------------------- */
 .org-card{
   background:var(--org-card);border:1px solid var(--org-line);border-radius:12px;
@@ -902,6 +920,10 @@ table.data td.actions { white-space: nowrap; }
   .org-side-group{position:static;transform:none;margin:14px 0 0 16px}
   .org-side-group::before{display:none}
   .org-side-list{width:auto;gap:12px}
+  .org-leaders{padding-bottom:14px}
+  .org-leaders-row{width:100%;display:block;padding-bottom:0}
+  .org-leaders-row::after,.org-leaders-item::after,.org-leaders::before{display:none}
+  .org-leaders-item+.org-leaders-item{margin-top:14px}
   .org-branch{
     margin:14px 0 0 8px;padding:0 0 0 14px;border-left:2px solid var(--org-line)}
   .org-branch::before,.org-branch-row::after,.org-branch-item::before{display:none}

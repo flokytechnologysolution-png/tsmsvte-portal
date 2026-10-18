@@ -428,6 +428,75 @@ async function main() {
       emptyLayout === null, 'layout=' + String(emptyLayout));
   } catch (e) { record('15. renderer builds the hierarchy, placeholders and escaping', false, e.message); }
 
+  /* 17. leadership roots ride ABOVE the chain (ministry diagram) ----------- */
+  try {
+    const vm = require('vm');
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'pages', 'org-chart.js'), 'utf8');
+    const sandbox = {
+      window: {},
+      document: {
+        getElementById: function () { return null; },
+        querySelector: function () { return null; }
+      },
+      App: {
+        ready: function () {},
+        esc: function (s) {
+          return String(s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+          });
+        }
+      }
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(src, sandbox);
+    const org = sandbox.window && sandbox.window.__orgChart;
+
+    const E = function (id, parent_id, title, portrait, category, order) {
+      return { id: id, parent_id: parent_id, title: title, name: '', category: category,
+        description: '', portrait: portrait || '', sort_order: order || 0, status: 'published' };
+    };
+    /* The production shape: SGS and Commissioner are top-level too, and the
+     * chain must still start at the Permanent Secretary (the deepest root).
+     * A childless non-leadership root stays in the branch row. */
+    const entries = [
+      E(1, null, 'Secretary to the Government (SGS)', '', 'leadership', 1),
+      E(2, null, 'Hon. Commissioner', '', 'leadership', 2),
+      E(3, null, 'Permanent Secretary', '', 'leadership', 3),
+      E(4, 3, 'Director of Admin', '', 'directorate', 0),
+      E(5, 3, 'Director of Vocational', '', 'directorate', 1),
+      E(6, 3, 'Director of Planning', '', 'directorate', 2),
+      E(7, 3, 'Secretary to the Ministry', '', 'unit_board', 3),
+      E(8, 5, 'Head, Vocational Studies', '', 'unit_board', 0),
+      E(9, 5, 'Head, Skills Acquisition', '', 'unit_board', 1),
+      E(10, 8, 'Trade Test Desk', '', 'unit_board', 0),
+      E(11, 9, 'Skills Desk', '', 'unit_board', 0),
+      E(12, 99, 'Orphan Unit (parent still draft)', '', 'unit_board', 0)
+    ];
+    const layout = org.buildLayout(entries);
+    const html = org.render(layout);
+    const topIds = (layout.top || []).map(function (n) { return n.id; });
+    const branchIds = (layout.branch || []).map(function (n) { return n.id; });
+
+    const topOk = topIds.join(',') === '1,2';               /* SGS first, Commissioner beside */
+    const spineOk = layout.spine.length === 2 &&
+      layout.spine[0].id === 3 && layout.spine[1].id === 5;
+    const sideOk = (layout.side[3] || []).map(function (n) { return n.id; }).join(',') === '4,6,7';
+    const branchOk = branchIds.indexOf(8) !== -1 && branchIds.indexOf(9) !== -1 &&
+      branchIds.indexOf(12) !== -1 &&                        /* orphan still visible */
+      branchIds.indexOf(1) === -1 && branchIds.indexOf(2) === -1;
+    const orderOk = html.indexOf('org-leaders') !== -1 &&
+      html.indexOf('org-leaders') < html.indexOf('org-spine') &&
+      html.indexOf('org-spine') < html.indexOf('org-branch');
+    const cardsOk = (html.split('org-card--chain').length - 1) === 4;  /* 2 top + 2 spine */
+    const orphanVisible = html.indexOf('Orphan Unit') !== -1;
+    record('17. leadership roots render above the chain, the rest in place',
+      !!org && topOk && spineOk && sideOk && branchOk && orderOk && cardsOk && orphanVisible,
+      'top=[' + topIds + '] spine=[' + layout.spine.map(function (n) { return n.id; }) + ']' +
+      ' side=[' + ((layout.side[3] || []).map(function (n) { return n.id; })) + ']' +
+      ' branch=[' + branchIds + '] chainCards=' +
+      (html.split('org-card--chain').length - 1));
+  } catch (e) { record('17. leadership roots render above the chain, the rest in place', false, e.message); }
+
   /* ---- report: close resources first, then exit NATURALLY ----------------- */
   const failed = results.filter(function (r) { return !r.pass; });
   console.log('\n' + results.length + ' tests, ' +

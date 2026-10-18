@@ -6,6 +6,9 @@
  * and draws the ministry's structure out of pure HTML + CSS (no chart
  * library, no canvas, no SVG connectors):
  *
+ *   • a horizontal TOP ROW for the extra leadership roots — the Secretary to
+ *     the Government and the Commissioner sit above the chain, on a rail that
+ *     feeds down into it (as on the ministry's chart diagram),
  *   • a vertical CHAIN for the leadership spine (root -> ... -> last link),
  *   • a SIDE GROUP hanging beside the chain node it reports to — the agencies
  *     attached to the Permanent Secretary, joined by a horizontal line,
@@ -183,14 +186,30 @@
     }
 
     var branch = (childMap[cur.id] || []).slice();
-    /* Further top-level entries ride along in the branch row: published work
-     * is never hidden just because it sits outside the main spine. */
-    roots.forEach(function (r) { if (r.id !== start.id) branch.push(r); });
+    /* Further top-level entries are never hidden. Leadership roots are lifted
+     * ABOVE the chain onto their own row (SGS and the Commissioner at the top
+     * of the diagram, feeding down into the Permanent Secretary); any other
+     * root still rides along in the branch row. */
+    var top = [];
+    roots.forEach(function (r) {
+      if (r.id === start.id) return;
+      if (r.category === 'leadership') top.push(r);
+      else branch.push(r);
+    });
 
-    return { spine: spine, side: side, branch: branch, childMap: childMap };
+    return { spine: spine, side: side, branch: branch, top: top, childMap: childMap };
   }
 
   function render(layout) {
+    /* The extra leadership roots sit above the chain, on their own rail. */
+    var topHtml = '';
+    if (layout.top && layout.top.length) {
+      topHtml = '<div class="org-leaders"><ul class="org-leaders-row">' +
+        layout.top.map(function (e) {
+          return '<li class="org-leaders-item">' + cardHtml(e, 'chain') + '</li>';
+        }).join('') +
+      '</ul></div>';
+    }
     var spineHtml = layout.spine.map(function (e) {
       var group = layout.side[e.id] || [];
       var groupHtml = group.length
@@ -218,7 +237,7 @@
       '</div>';
     }
 
-    return '<div class="org-tree">' +
+    return '<div class="org-tree">' + topHtml +
       '<ul class="org-spine">' + spineHtml + '</ul>' +
       branchHtml +
     '</div>';
