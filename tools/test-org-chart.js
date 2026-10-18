@@ -360,6 +360,74 @@ async function main() {
       ' home=' + loadsHome + ' clean=' + loadsClean + ' placeholdersGone=' + placeholdersGone);
   } catch (e) { record('14. homepage hosts the dynamic chart; placeholders are gone', false, e.message); }
 
+  /* 15. renderer: chain/side-group/branch/units, placeholders, escaping ----- */
+  try {
+    const vm = require('vm');
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'pages', 'org-chart.js'), 'utf8');
+    const sandbox = {
+      window: {},
+      document: {
+        getElementById: function () { return null; },
+        querySelector: function () { return null; }
+      },
+      /* App.ready is never fired here, so no request leaves the sandbox. */
+      App: {
+        ready: function () {},
+        esc: function (s) {
+          return String(s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+          });
+        }
+      }
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(src, sandbox);
+    const org = sandbox.window && sandbox.window.__orgChart;
+
+    const E = function (id, parent_id, title, portrait, category, order) {
+      return { id: id, parent_id: parent_id, title: title, name: '', category: category,
+        description: '', portrait: portrait || '', sort_order: order || 0, status: 'published' };
+    };
+    /* Commissioner -> Permanent Secretary -> three directors; only Vocational
+     * continues, so Admin and Planning hang beside the PS as the side group
+     * and Vocational feeds the branch row, whose two heads carry a unit each. */
+    const entries = [
+      E(1, null, 'Hon. Commissioner', '', 'leadership', 0),
+      E(2, 1, 'Hon. Perm. Secretary', '/files/abcdef0123456789abcdef01', 'leadership', 0),
+      E(3, 2, 'Director of Admin', '', 'directorate', 0),
+      E(4, 2, 'Director of Vocational', '', 'directorate', 1),
+      E(5, 2, 'Director of Planning', '', 'directorate', 2),
+      E(6, 4, 'Head, Vocational Studies', '', 'unit_board', 0),
+      E(7, 4, 'Head, Skills <script>', 'https://evil.example/x.png', 'unit_board', 1),
+      E(8, 6, 'Skills Acquisition Desk', '', 'unit_board', 0),
+      E(9, 7, 'Trade Test Desk', '', 'unit_board', 0)
+    ];
+    const layout = org.buildLayout(entries);
+    const html = org.render(layout);
+    const n = function (cls) { return (html.split(cls).length - 1); };
+
+    const shapeOk = !!layout && layout.spine.length === 3 &&
+      (layout.side[2] || []).length === 2 && layout.branch.length === 2;
+    const cardsOk = n('org-card--chain') === 3 && n('org-card--compact') === 4 &&
+      n('org-card--unit') === 2;
+    const portraitsOk = html.indexOf('/files/abcdef0123456789abcdef01') !== -1 &&
+      n('is-placeholder') === 8;                  /* every card but the uploaded one */
+    const safetyOk = html.indexOf('<script>') === -1 &&
+      html.indexOf('&lt;script&gt;') !== -1 &&   /* the title is escaped, not run */
+      html.indexOf('evil.example') === -1;       /* outside links never render */
+    record('15. renderer builds the hierarchy, placeholders and escaping', !!org &&
+      shapeOk && cardsOk && portraitsOk && safetyOk,
+      'spine=' + (layout && layout.spine.length) + ' side=' + (layout && (layout.side[2] || []).length) +
+      ' branch=' + (layout && layout.branch.length) +
+      ' cards=' + n('org-card--chain') + '/' + n('org-card--compact') + '/' + n('org-card--unit') +
+      ' placeholders=' + n('is-placeholder'));
+
+    /* An empty list never throws and never renders a card. */
+    const emptyLayout = org.buildLayout([]);
+    record('16. an empty chart renders the neutral note instead of a tree',
+      emptyLayout === null, 'layout=' + String(emptyLayout));
+  } catch (e) { record('15. renderer builds the hierarchy, placeholders and escaping', false, e.message); }
+
   /* ---- report: close resources first, then exit NATURALLY ----------------- */
   const failed = results.filter(function (r) { return !r.pass; });
   console.log('\n' + results.length + ' tests, ' +

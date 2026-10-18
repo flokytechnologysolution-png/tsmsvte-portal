@@ -252,4 +252,8 @@
 
   App.ready(function () { load(); });
 
+  /* Exposed for tools/test-org-chart.js (it runs this file in a sandbox with a
+   * stubbed window/App); the page's own behaviour is unchanged. */
+  window.__orgChart = { buildLayout: buildLayout, render: render, cardHtml: cardHtml };
+
 })();
