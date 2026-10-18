@@ -109,6 +109,7 @@ app.use('/api/settings', require('./routes/settings'));
 app.use('/api/mail', require('./routes/mail'));
 app.use('/api/sms', require('./routes/sms'));
 app.use('/api/chat', require('./routes/chat'));
+app.use('/api/org-chart', require('./routes/org-chart'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/files', filesRoute);
 app.use('/api', notFound);

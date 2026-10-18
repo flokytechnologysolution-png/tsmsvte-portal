@@ -773,3 +773,47 @@ table.data td.actions { white-space: nowrap; }
 .service-card:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.12)}
 .service-card h3{margin:0 0 6px;color:var(--primary)}
 .service-card p{margin:0}
+
+/* --------------------------- organization chart ------------------------- *
+ * Public homepage hierarchy (rendered by js/pages/org-chart.js). Nested <ul>
+ * levels with light connector lines; stacks into an indented list on phones.
+ */
+.org-chart{margin-top:6px}
+.org-chart ul{list-style:none;margin:0;padding:0;display:flex;justify-content:center;align-items:flex-start;flex-wrap:wrap}
+.org-chart li{display:flex;flex-direction:column;align-items:center;position:relative}
+.org-card{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius,12px);
+  box-shadow:var(--shadow-sm);padding:16px 18px;margin:0 10px;text-align:center;
+  max-width:270px;min-width:190px}
+.org-card .org-portrait img{
+  width:104px;height:128px;object-fit:cover;border-radius:10px;display:block;margin:0 auto 10px;
+  border:2px solid var(--accent,#c79a2e);background:var(--primary-tint)}
+.org-card .org-cat{
+  display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--primary);margin-bottom:4px}
+.org-card .org-title{margin:0 0 4px;font-size:16px;color:var(--ink)}
+.org-card .org-name{margin:0;font-weight:600;color:var(--primary-dark,#0b4d2a)}
+.org-card .org-desc{margin:8px 0 0;font-size:13.5px;color:var(--muted)}
+/* connectors: a stub from each parent down to its children row, then a
+   horizontal rail across the siblings (first/last clip their outer half) */
+.org-chart .org-children{margin-top:30px;position:relative}
+.org-chart .org-children::before{
+  content:'';position:absolute;top:-30px;left:50%;height:30px;border-left:2px solid var(--line)}
+.org-chart .org-children>.org-node{padding-top:30px}
+.org-chart .org-children>.org-node::before{
+  content:'';position:absolute;top:0;left:50%;height:30px;border-left:2px solid var(--line)}
+.org-chart .org-children>.org-node::after{
+  content:'';position:absolute;top:0;left:0;right:0;border-top:2px solid var(--line)}
+.org-chart .org-children>.org-node:first-child::after{left:50%}
+.org-chart .org-children>.org-node:last-child::after{right:50%}
+.org-chart .org-children>.org-node:only-child::after{display:none}
+@media (max-width:640px){
+  .org-chart ul{display:block}
+  .org-card{max-width:none;width:100%;margin:0 0 10px;text-align:left}
+  .org-card .org-portrait img{margin:0 0 10px}
+  .org-chart .org-children{margin-top:0;padding-left:16px;border-left:2px solid var(--line);margin-left:12px}
+  .org-chart .org-children::before,
+  .org-chart .org-children>.org-node::before,
+  .org-chart .org-children>.org-node::after{display:none}
+  .org-chart .org-children>.org-node{padding-top:0;align-items:stretch}
+}

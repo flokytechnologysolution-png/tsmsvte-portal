@@ -21,7 +21,7 @@
  * Naming it per-release is what lets the activate handler below safely purge
  * the old release's cache without touching the new one.
  * ------------------------------------------------------------------------ */
-const CACHE = 'tsmsvte-portal-v3';
+const CACHE = 'tsmsvte-portal-v4';
 
 const SHELL = [
   '/',

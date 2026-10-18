@@ -215,6 +215,7 @@ async function ensureSchema() {
       CREATE TABLE IF NOT EXISTS login_attempts (email TEXT PRIMARY KEY, failed_count INTEGER NOT NULL DEFAULT 0, first_failed_at TIMESTAMP, locked_until TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE IF NOT EXISTS sms_recipient_log (id SERIAL PRIMARY KEY, send_id INTEGER NOT NULL REFERENCES sms_logs (id) ON DELETE CASCADE, phone_masked TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'queued', provider_id TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE IF NOT EXISTS sms_send_tokens (id SERIAL PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE, recipients TEXT NOT NULL, recipient_count INTEGER NOT NULL DEFAULT 0, invalid_count INTEGER NOT NULL DEFAULT 0, message TEXT NOT NULL, template_id INTEGER, template_name TEXT NOT NULL DEFAULT '', audience TEXT NOT NULL DEFAULT '', segments INTEGER NOT NULL DEFAULT 1, used_at TIMESTAMP, expires_at TIMESTAMP NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+      CREATE TABLE IF NOT EXISTS org_chart (id SERIAL PRIMARY KEY, parent_id INTEGER REFERENCES org_chart (id) ON DELETE SET NULL, title TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT 'leadership', description TEXT NOT NULL DEFAULT '', portrait TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'draft', created_by INTEGER REFERENCES users (id) ON DELETE SET NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS lga_id INTEGER;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS school_id INTEGER;
       ALTER TABLE schools ADD COLUMN IF NOT EXISTS lga_id INTEGER REFERENCES lgas (id);
@@ -224,6 +225,7 @@ async function ensureSchema() {
       CREATE INDEX IF NOT EXISTS idx_users_lga ON users (lga_id);
       CREATE INDEX IF NOT EXISTS idx_users_school ON users (school_id);
       CREATE INDEX IF NOT EXISTS idx_schools_lga_id ON schools (lga_id);
+      CREATE INDEX IF NOT EXISTS idx_org_chart_parent ON org_chart (parent_id);
     `);
   } else {
     sqliteDb.exec(`
@@ -252,6 +254,8 @@ async function ensureSchema() {
       CREATE TABLE IF NOT EXISTS login_attempts (email TEXT PRIMARY KEY, failed_count INTEGER NOT NULL DEFAULT 0, first_failed_at TEXT, locked_until TEXT, updated_at TEXT NOT NULL DEFAULT (datetime('now')));
       CREATE TABLE IF NOT EXISTS sms_recipient_log (id INTEGER PRIMARY KEY AUTOINCREMENT, send_id INTEGER NOT NULL REFERENCES sms_logs (id) ON DELETE CASCADE, phone_masked TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'queued', provider_id TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT (datetime('now')));
       CREATE TABLE IF NOT EXISTS sms_send_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, token_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE, recipients TEXT NOT NULL, recipient_count INTEGER NOT NULL DEFAULT 0, invalid_count INTEGER NOT NULL DEFAULT 0, message TEXT NOT NULL, template_id INTEGER, template_name TEXT NOT NULL DEFAULT '', audience TEXT NOT NULL DEFAULT '', segments INTEGER NOT NULL DEFAULT 1, used_at TEXT, expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+      CREATE TABLE IF NOT EXISTS org_chart (id INTEGER PRIMARY KEY AUTOINCREMENT, parent_id INTEGER REFERENCES org_chart (id) ON DELETE SET NULL, title TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT 'leadership', description TEXT NOT NULL DEFAULT '', portrait TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'draft', created_by INTEGER REFERENCES users (id) ON DELETE SET NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+      CREATE INDEX IF NOT EXISTS idx_org_chart_parent ON org_chart (parent_id);
     `);
     ensureSqliteMigrations();
   }

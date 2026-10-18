@@ -21,6 +21,7 @@
     { id: 'events', label: 'Events', roles: ['OWNER', 'ADMIN', 'EDITOR'] },
     { id: 'circulars', label: 'Circulars', roles: ['OWNER', 'ADMIN'] },
     { id: 'faq', label: 'FAQ & knowledge base', roles: ['OWNER', 'ADMIN', 'EDITOR'] },
+    { id: 'orgchart', label: 'Organization chart', roles: ['OWNER', 'ADMIN'] },
     { id: 'users', label: 'User accounts', roles: ['OWNER', 'ADMIN'] },
     { id: 'chats', label: 'Live chat', roles: ['OWNER', 'ADMIN'], pill: 'chatsWaiting' },
     { id: 'sms', label: 'Bulk SMS', roles: ['OWNER', 'ADMIN'] },
@@ -2966,6 +2967,339 @@
   /* --------------------------------------------------------------------- *
    * Router + boot                                                          *
    * --------------------------------------------------------------------- */
+  /* --------------------------------------------------------------------- *
+   * Organization chart (OWNER/ADMIN)                                       *
+   * The public site only ever shows published entries (GET /api/org-chart);*
+   * drafts live here until an administrator verifies and publishes them.   *
+   * --------------------------------------------------------------------- */
+  const ORG_CATEGORY_LABEL = { leadership: 'Leadership', directorate: 'Directorate', unit_board: 'Unit & Board' };
+  let orgEntries = [];
+
+  function loadOrgChart() {
+    section('orgchart', 'Organization chart',
+      '<div class="placeholder-note">Entries stay hidden from the public site until you publish them. ' +
+      'Only enter official names, titles and portraits you have verified — nothing is invented for you.</div>' +
+      '<div class="filter-bar">' +
+        '<div class="field grow"><label for="og-q">Search</label>' +
+          '<input type="search" id="og-q" placeholder="Position, name or description…"></div>' +
+        '<div class="field"><label for="og-cat">Category</label><select id="og-cat">' +
+          '<option value="">All categories</option>' +
+          '<option value="leadership">Leadership</option>' +
+          '<option value="directorate">Directorate</option>' +
+          '<option value="unit_board">Unit &amp; Board</option>' +
+        '</select></div>' +
+        '<div class="field"><label for="og-status">Status</label><select id="og-status">' +
+          '<option value="">All statuses</option>' +
+          '<option value="published">Published</option>' +
+          '<option value="draft">Draft</option>' +
+        '</select></div>' +
+        '<button class="btn" type="button" id="og-new">+ Add entry</button>' +
+      '</div>' +
+      '<div id="og-rows"><div class="empty-state"><strong>Loading…</strong></div></div>');
+
+    App.on(document.getElementById('og-new'), 'click', function () { orgEditor(null); });
+    App.on(document.getElementById('og-q'), 'input', App.debounce(function () { renderOrgRows(); }, 300));
+    App.on(document.getElementById('og-cat'), 'change', function () { renderOrgRows(); });
+    App.on(document.getElementById('og-status'), 'change', function () { renderOrgRows(); });
+
+    fetchOrgRows();
+  }
+
+  function fetchOrgRows() {
+    App.api('/api/org-chart/admin').then(function (d) {
+      orgEntries = d.entries || [];
+      renderOrgRows();
+    }).catch(failed);
+  }
+
+  /* How deep an entry sits (top level = 0). Broken/looping links stop at 20
+   * so a corrupted row can never hang the console. */
+  function orgDepth(entry, byId) {
+    let depth = 0;
+    let cur = entry;
+    const guard = {};
+    while (cur && cur.parent_id !== null && cur.parent_id !== undefined && depth < 20) {
+      if (guard[cur.id]) break;
+      guard[cur.id] = true;
+      cur = byId[cur.parent_id];
+      depth += 1;
+    }
+    return depth;
+  }
+
+  function orgSort(a, b) {
+    return (Number(a.sort_order || 0) - Number(b.sort_order || 0)) ||
+      String(a.title || '').localeCompare(String(b.title || '')) ||
+      (Number(a.id) - Number(b.id));
+  }
+  function renderOrgRows() {
+    const host = document.getElementById('og-rows');
+    if (!host) return;
+    const q = (((document.getElementById('og-q') || {}).value) || '').trim().toLowerCase();
+    const cat = ((document.getElementById('og-cat') || {}).value) || '';
+    const st = ((document.getElementById('og-status') || {}).value) || '';
+
+    const byId = {};
+    orgEntries.forEach(function (e) { byId[e.id] = e; });
+
+    const rows = orgEntries.slice().sort(orgSort).filter(function (e) {
+      if (cat && e.category !== cat) return false;
+      if (st && e.status !== st) return false;
+      if (q) {
+        const hay = (e.title + ' ' + e.name + ' ' + (e.description || '')).toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+
+    if (!rows.length) {
+      host.innerHTML = App.emptyState(
+        orgEntries.length ? 'No entries match these filters' : 'No organization chart entries yet',
+        orgEntries.length
+          ? 'Change the search or filters to see the other entries.'
+          : 'Add the verified leadership, directorates, units and boards here. Nothing appears on the public site until an entry is published.');
+      return;
+    }
+
+    host.innerHTML = rows.map(function (e) {
+      const parent = (e.parent_id !== null && e.parent_id !== undefined) ? byId[e.parent_id] : null;
+      const kids = orgEntries.filter(function (x) { return x.parent_id === e.id; }).length;
+      const depth = orgDepth(e, byId);
+      return '<div class="card" style="margin-bottom:12px">' +
+        '<div class="card-head">' +
+          '<h3 style="margin:0;font-size:17px">' +
+            (depth ? '<span class="muted">' + '· '.repeat(depth) + '</span>' : '') +
+            App.esc(e.title) + '</h3>' +
+          '<span class="integ">' +
+            '<span class="badge ' + (e.status === 'published' ? 'ok' : 'warn') + '">' + App.esc(e.status) + '</span>' +
+            '<span class="badge muted">' + App.esc(ORG_CATEGORY_LABEL[e.category] || e.category) + '</span>' +
+            '<span class="badge muted">order ' + Number(e.sort_order || 0) + '</span>' +
+            (kids ? '<span class="badge info">' + kids + ' direct report' + (kids === 1 ? '' : 's') + '</span>' : '') +
+          '</span>' +
+        '</div>' +
+        '<p class="muted" style="margin:4px 0 0">' +
+          (e.name ? App.esc(e.name) : '<em>No verified name entered</em>') +
+          ' — ' + (parent ? 'reports to ' + App.esc(parent.title) : 'top level') + '</p>' +
+        (e.description ? '<p style="white-space:pre-wrap;margin:6px 0 0">' + App.esc(e.description) + '</p>' : '') +
+        '<div class="form-actions">' +
+          (e.portrait
+            ? '<img src="' + App.esc(e.portrait) + '" alt="" style="width:44px;height:52px;object-fit:cover;border-radius:6px">'
+            : '') +
+          '<button class="btn btn-sm btn-outline" data-og-edit="' + e.id + '">Edit</button>' +
+          '<button class="btn btn-sm btn-danger" data-og-del="' + e.id + '">Delete</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    App.qsa('[data-og-edit]', host).forEach(function (b) {
+      App.on(b, 'click', function () {
+        const id = Number(b.getAttribute('data-og-edit'));
+        orgEditor(orgEntries.find(function (x) { return x.id === id; }) || null);
+      });
+    });
+    App.qsa('[data-og-del]', host).forEach(function (b) {
+      App.on(b, 'click', function () { deleteOrgEntry(Number(b.getAttribute('data-og-del'))); });
+    });
+  }
+  /* The entry itself plus every descendant — used to keep the parent picker
+   * from offering a loop (an entry can never report into its own subtree). */
+  function orgDescendantIds(id) {
+    const out = {};
+    out[id] = true;
+    let changed = true;
+    while (changed) {
+      changed = false;
+      orgEntries.forEach(function (e) {
+        if (e.parent_id !== null && e.parent_id !== undefined && out[e.parent_id] && !out[e.id]) {
+          out[e.id] = true;
+          changed = true;
+        }
+      });
+    }
+    return out;
+  }
+
+  function orgEditor(rec) {
+    const isNew = !rec;
+    let portrait = (rec && rec.portrait) ? rec.portrait : '';
+    const skip = isNew ? {} : orgDescendantIds(rec.id);
+
+    /* Parent options: every other entry (never self or its own subtree),
+     * indented by depth so the hierarchy is obvious while choosing. */
+    const byId = {};
+    orgEntries.forEach(function (e) { byId[e.id] = e; });
+    const parentOptions = orgEntries.slice().sort(orgSort).filter(function (e) {
+      return !skip[e.id];
+    }).map(function (e) {
+      const indent = new Array(orgDepth(e, byId) + 1).join('— ');
+      const selected = (rec && rec.parent_id === e.id) ? ' selected' : '';
+      return '<option value="' + e.id + '"' + selected + '>' +
+        App.esc(indent + e.title + (e.name ? ' (' + e.name + ')' : '')) + '</option>';
+    }).join('');
+
+    const box = App.openModal(
+      '<h3>' + (isNew ? 'Add organization chart entry' : 'Edit: ' + App.esc(rec.title)) + '</h3>' +
+      '<div class="form-grid">' +
+        '<div class="field"><label for="og-f-title">Position / title *</label>' +
+          '<input id="og-f-title" maxlength="160" value="' + App.esc(rec ? rec.title : '') + '" ' +
+          'placeholder="e.g. Commissioner">' +
+          '<p class="kv-note mt-0">The office or position, not the person.</p></div>' +
+        '<div class="field"><label for="og-f-name">Verified official name</label>' +
+          '<input id="og-f-name" maxlength="160" value="' + App.esc(rec ? rec.name : '') + '">' +
+          '<p class="kv-note mt-0">Leave blank until the name has been verified. Blank names never invent a person.</p></div>' +
+        '<div class="field"><label for="og-f-category">Category</label>' +
+          '<select id="og-f-category">' +
+            '<option value="leadership"' + (!rec || rec.category === 'leadership' ? ' selected' : '') + '>Leadership</option>' +
+            '<option value="directorate"' + (rec && rec.category === 'directorate' ? ' selected' : '') + '>Directorate</option>' +
+            '<option value="unit_board"' + (rec && rec.category === 'unit_board' ? ' selected' : '') + '>Unit &amp; Board</option>' +
+          '</select></div>' +
+        '<div class="field"><label for="og-f-parent">Reports to</label>' +
+          '<select id="og-f-parent"><option value="">— Top level —</option>' + parentOptions + '</select>' +
+          '<p class="kv-note mt-0">The Secretary to the Government sits at the top; everyone else reports into the hierarchy.</p></div>' +
+        '<div class="field span-2"><label for="og-f-description">Description</label>' +
+          '<textarea id="og-f-description" rows="3" maxlength="2000">' + App.esc(rec ? rec.description : '') + '</textarea></div>' +
+        '<div class="field"><label for="og-f-order">Display order</label>' +
+          '<input id="og-f-order" inputmode="numeric" value="' + App.esc(rec ? rec.sort_order : 0) + '">' +
+          '<p class="kv-note mt-0">Lower numbers appear first within the same level.</p></div>' +
+        '<div class="field"><label for="og-f-status">Publication status</label>' +
+          '<select id="og-f-status">' +
+            '<option value="draft"' + (!rec || rec.status !== 'published' ? ' selected' : '') + '>Draft (hidden from the public)</option>' +
+            '<option value="published"' + (rec && rec.status === 'published' ? ' selected' : '') + '>Published</option>' +
+          '</select>' +
+          '<p class="kv-note mt-0">Publish only once every detail has been verified.</p></div>' +
+        '<div class="field span-2"><label>Portrait</label>' +
+          '<div class="img-edit">' +
+            '<div class="img-preview" id="og-f-preview">' +
+              (portrait ? '<img src="' + App.esc(portrait) + '" alt="Portrait preview">' : '<span class="muted">No portrait</span>') +
+            '</div>' +
+            '<div class="img-buttons">' +
+              '<button class="btn btn-sm btn-outline" type="button" id="og-f-upload">Upload portrait</button>' +
+              '<button class="btn btn-sm btn-ghost" type="button" id="og-f-clear">Remove</button>' +
+            '</div>' +
+          '</div>' +
+          '<p class="kv-note mt-0">JPEG, PNG or WebP up to 3 MB. Portraits are stored inside the portal — outside image links are not accepted.</p>' +
+        '</div>' +
+      '</div>' +
+      '<p class="form-error" id="og-f-err" hidden></p>' +
+      '<div class="modal-actions">' +
+        '<button class="btn btn-ghost" type="button" id="og-f-cancel">Cancel</button>' +
+        '<button class="btn" type="button" id="og-f-save">' + (isNew ? 'Create' : 'Save') + '</button>' +
+      '</div>', { wide: true });
+    function setPortrait(url) {
+      portrait = url || '';
+      const prev = box.querySelector('#og-f-preview');
+      if (!prev) return;
+      prev.innerHTML = portrait
+        ? '<img src="' + App.esc(portrait) + '" alt="Portrait preview">'
+        : '<span class="muted">No portrait</span>';
+    }
+
+    /* Upload goes through the existing console endpoint (POST /api/settings/
+     * upload): magic-byte validated, stored in the `files` table, referenced
+     * only by its "/files/<id>" URL.  App.api is used (not apiForm) because it
+     * also sends the X-CSRF-Token header, which the server can only read from
+     * the header on a multipart request.  There is deliberately no text field
+     * for a portrait address — outside links can never be entered. */
+    App.on(box.querySelector('#og-f-upload'), 'click', function () {
+      const btn = this;
+      const chooser = document.createElement('input');
+      chooser.type = 'file';
+      chooser.accept = 'image/jpeg,image/png,image/webp';
+      chooser.onchange = function () {
+        const file = chooser.files && chooser.files[0];
+        if (!file) return;
+        if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+          App.toast('Choose a JPEG, PNG or WebP image.', 'err');
+          return;
+        }
+        App.busy(btn, function () {
+          return resizeImage(file).then(function (prepared) {
+            const fd = new FormData();
+            fd.append('file', prepared.blob, prepared.name);
+            return App.api('/api/settings/upload', { method: 'POST', body: fd });
+          });
+        }).then(function (res) {
+          if (!res || !res.url) throw new Error('The server did not return an image URL.');
+          setPortrait(res.url);
+          App.toast('Portrait uploaded — save the entry to apply it.', 'ok');
+        }).catch(function (e) {
+          App.toast(e && e.message ? e.message : 'The portrait could not be uploaded.', 'err');
+        });
+      };
+      chooser.click();
+    });
+
+    App.on(box.querySelector('#og-f-clear'), 'click', function () { setPortrait(''); });
+    App.on(box.querySelector('#og-f-cancel'), 'click', App.closeModal);
+
+    App.on(box.querySelector('#og-f-save'), 'click', function () {
+      const err = box.querySelector('#og-f-err');
+      err.hidden = true;
+      const title = box.querySelector('#og-f-title').value.trim();
+      const orderRaw = box.querySelector('#og-f-order').value.trim();
+      const payload = {
+        title: title,
+        name: box.querySelector('#og-f-name').value.trim(),
+        category: box.querySelector('#og-f-category').value,
+        parent_id: box.querySelector('#og-f-parent').value || null,
+        description: box.querySelector('#og-f-description').value.trim(),
+        sort_order: /^-?\d+$/.test(orderRaw) ? parseInt(orderRaw, 10) : NaN,
+        status: box.querySelector('#og-f-status').value,
+        portrait: portrait
+      };
+      if (!title) {
+        err.hidden = false;
+        err.textContent = 'The position / title is required.';
+        return;
+      }
+      if (!Number.isFinite(payload.sort_order)) {
+        err.hidden = false;
+        err.textContent = 'Display order must be a whole number.';
+        return;
+      }
+      App.busy(this, function () {
+        return App.api(isNew ? '/api/org-chart' : '/api/org-chart/' + rec.id,
+          { method: isNew ? 'POST' : 'PUT', body: payload });
+      }).then(function () {
+        App.closeModal();
+        App.toast(isNew
+          ? 'Entry created. It stays a draft until you publish it.'
+          : (payload.status === 'published'
+            ? 'Entry saved and published.'
+            : 'Entry saved. It remains hidden from the public site (draft).'), 'ok');
+        fetchOrgRows();
+      }).catch(function (e) {
+        err.hidden = false;
+        err.textContent = e.message;
+      });
+    });
+  }
+
+  function deleteOrgEntry(id) {
+    const rec = orgEntries.find(function (x) { return x.id === id; });
+    if (!rec) return;
+    const byId = {};
+    orgEntries.forEach(function (e) { byId[e.id] = e; });
+    const kids = orgEntries.filter(function (x) { return x.parent_id === id; }).length;
+    const parent = (rec.parent_id !== null && rec.parent_id !== undefined) ? byId[rec.parent_id] : null;
+    const message = kids
+      ? 'Remove "' + rec.title + '" from the organization chart? Its ' + kids +
+        ' direct report' + (kids === 1 ? '' : 's') + ' will move up to ' +
+        (parent ? '"' + parent.title + '"' : 'the top level') + '.'
+      : 'Remove "' + rec.title + '" from the organization chart?';
+    confirmDialog('Delete organization chart entry', message, 'Delete').then(function (ok) {
+      if (!ok) return;
+      App.busy(null, function () { return App.api('/api/org-chart/' + id, { method: 'DELETE' }); })
+        .then(function (res) {
+          App.toast((res && res.reparented)
+            ? 'Entry deleted. ' + res.reparented + ' direct report(s) moved up one level.'
+            : 'Entry deleted.', 'ok');
+          fetchOrgRows();
+        })
+        .catch(function (e) { App.toast(e.message, 'err'); });
+    });
+  }
+
   const LOADERS = {
     overview: loadOverview,
     staff: loadStaff,
@@ -2975,6 +3309,7 @@
     events: loadEvents,
     circulars: loadCirculars,
     faq: loadFaq,
+    orgchart: loadOrgChart,
     users: loadUsers,
     chats: loadChats,
     sms: loadSms,
