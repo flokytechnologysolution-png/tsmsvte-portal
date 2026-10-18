@@ -2978,7 +2978,9 @@
   function loadOrgChart() {
     section('orgchart', 'Organization chart',
       '<div class="placeholder-note">Entries stay hidden from the public site until you publish them. ' +
-      'Only enter official names, titles and portraits you have verified — nothing is invented for you.</div>' +
+      'Only enter official names, titles and portraits you have verified — nothing is invented for you. ' +
+      'Every position has its own picture slot in the list below (JPEG, PNG or WebP up to 2 MB); ' +
+      'positions without a picture show the portal placeholder.</div>' +
       '<div class="filter-bar">' +
         '<div class="field grow"><label for="og-q">Search</label>' +
           '<input type="search" id="og-q" placeholder="Position, name or description…"></div>' +
@@ -3032,6 +3034,45 @@
       String(a.title || '').localeCompare(String(b.title || '')) ||
       (Number(a.id) - Number(b.id));
   }
+  /* ========================= Organization chart ======================== *
+   * The admin list is the ministry's hierarchy: every position is one row,
+   * grouped by level and kept in tree order (a parent always sits above its
+   * reports).  Each row carries its own picture slot — upload a portrait for
+   * any position here, published or not — plus per-row Save, Publish,
+   * reorder and Delete controls.                                       */
+  const ORG_PLACEHOLDER = '/img/placeholder-portrait.svg';
+  const ORG_MAX_PORTRAIT = 2 * 1024 * 1024; /* 2 MB per portrait */
+  /* Parent-first order (siblings in display order) — never recursing past a
+   * repeat, so a corrupted link cannot lock the console. */
+  function orgTreeOrder() {
+    const byId = {};
+    orgEntries.forEach(function (e) { byId[e.id] = e; });
+    const kids = {};
+    orgEntries.forEach(function (e) {
+      const top = (e.parent_id === null || e.parent_id === undefined);
+      const key = (!top && byId[e.parent_id]) ? Number(e.parent_id) : 0;
+      (kids[key] = kids[key] || []).push(e);
+    });
+    Object.keys(kids).forEach(function (k) { kids[k].sort(orgSort); });
+    const out = [];
+    const seen = {};
+    (function walk(list) {
+      list.forEach(function (e) {
+        if (seen[e.id]) return;
+        seen[e.id] = true;
+        out.push(e);
+        walk(kids[e.id] || []);
+      });
+    })(kids[0] || []);
+    /* Anything left out by a broken link still gets listed, once. */
+    orgEntries.forEach(function (e) {
+      if (seen[e.id]) return;
+      seen[e.id] = true;
+      out.push(e);
+    });
+    return out;
+  }
+
   function renderOrgRows() {
     const host = document.getElementById('og-rows');
     if (!host) return;
@@ -3042,7 +3083,7 @@
     const byId = {};
     orgEntries.forEach(function (e) { byId[e.id] = e; });
 
-    const rows = orgEntries.slice().sort(orgSort).filter(function (e) {
+    const rows = orgTreeOrder().filter(function (e) {
       if (cat && e.category !== cat) return false;
       if (st && e.status !== st) return false;
       if (q) {
@@ -3061,35 +3102,23 @@
       return;
     }
 
-    host.innerHTML = rows.map(function (e) {
-      const parent = (e.parent_id !== null && e.parent_id !== undefined) ? byId[e.parent_id] : null;
-      const kids = orgEntries.filter(function (x) { return x.parent_id === e.id; }).length;
+    let html = '';
+    let level = -1;
+    rows.forEach(function (e) {
       const depth = orgDepth(e, byId);
-      return '<div class="card" style="margin-bottom:12px">' +
-        '<div class="card-head">' +
-          '<h3 style="margin:0;font-size:17px">' +
-            (depth ? '<span class="muted">' + '· '.repeat(depth) + '</span>' : '') +
-            App.esc(e.title) + '</h3>' +
-          '<span class="integ">' +
-            '<span class="badge ' + (e.status === 'published' ? 'ok' : 'warn') + '">' + App.esc(e.status) + '</span>' +
-            '<span class="badge muted">' + App.esc(ORG_CATEGORY_LABEL[e.category] || e.category) + '</span>' +
-            '<span class="badge muted">order ' + Number(e.sort_order || 0) + '</span>' +
-            (kids ? '<span class="badge info">' + kids + ' direct report' + (kids === 1 ? '' : 's') + '</span>' : '') +
-          '</span>' +
-        '</div>' +
-        '<p class="muted" style="margin:4px 0 0">' +
-          (e.name ? App.esc(e.name) : '<em>No verified name entered</em>') +
-          ' — ' + (parent ? 'reports to ' + App.esc(parent.title) : 'top level') + '</p>' +
-        (e.description ? '<p style="white-space:pre-wrap;margin:6px 0 0">' + App.esc(e.description) + '</p>' : '') +
-        '<div class="form-actions">' +
-          (e.portrait
-            ? '<img src="' + App.esc(e.portrait) + '" alt="" style="width:44px;height:52px;object-fit:cover;border-radius:6px">'
-            : '') +
-          '<button class="btn btn-sm btn-outline" data-og-edit="' + e.id + '">Edit</button>' +
-          '<button class="btn btn-sm btn-danger" data-og-del="' + e.id + '">Delete</button>' +
-        '</div>' +
-      '</div>';
-    }).join('');
+      if (depth !== level) {
+        if (level !== -1) html += '</div>';
+        level = depth;
+        html += '<div class="og-level"><h3 class="og-level-title">Level ' +
+          (depth + 1) + ' — ' + App.esc((ORG_CATEGORY_LABEL[e.category] || e.category)) + '</h3>';
+      }
+      html += orgRowHtml(e, byId);
+    });
+    if (level !== -1) html += '</div>';
+    html += '<p class="kv-note">Every row saves on its own with its Save button; pictures are ' +
+      'uploaded straight from the row (JPEG, PNG or WebP up to 2 MB, stored inside the portal). ' +
+      'Entries stay hidden from the public site until published.</p>';
+    host.innerHTML = html;
 
     App.qsa('[data-og-edit]', host).forEach(function (b) {
       App.on(b, 'click', function () {
@@ -3100,6 +3129,229 @@
     App.qsa('[data-og-del]', host).forEach(function (b) {
       App.on(b, 'click', function () { deleteOrgEntry(Number(b.getAttribute('data-og-del'))); });
     });
+    App.qsa('[data-og-save]', host).forEach(function (b) {
+      App.on(b, 'click', function () { saveOrgRow(b.closest('.og-row')); });
+    });
+    App.qsa('[data-og-upload]', host).forEach(function (b) {
+      App.on(b, 'click', function () { uploadOrgPortrait(b.closest('.og-row')); });
+    });
+    App.qsa('[data-og-move]', host).forEach(function (b) {
+      App.on(b, 'click', function () {
+        moveOrgEntry(Number(b.getAttribute('data-og-id')),
+          Number(b.getAttribute('data-og-move')));
+      });
+    });
+    App.qsa('[data-og-field]', host).forEach(function (f) {
+      App.on(f, 'change', function () {
+        const row = f.closest('.og-row');
+        if (!row) return;
+        row.classList.add('is-dirty');
+        const save = row.querySelector('[data-og-save]');
+        if (save) save.disabled = false;
+      });
+    });
+  }
+  function orgRowHtml(e, byId) {
+    const portrait = String(e.portrait || '').trim();
+    const parent = (e.parent_id !== null && e.parent_id !== undefined) ? byId[e.parent_id] : null;
+    const kids = orgEntries.filter(function (x) { return x.parent_id === e.id; }).length;
+    const skip = orgDescendantIds(e.id);
+    /* The parent list is the same ministry hierarchy the chart renders. */
+    const parentOptions = orgEntries.slice().sort(orgSort).filter(function (x) {
+      return !skip[x.id];
+    }).map(function (x) {
+      const indent = new Array(orgDepth(x, byId) + 1).join('— ');
+      const selected = (e.parent_id === x.id) ? ' selected' : '';
+      return '<option value="' + x.id + '"' + selected + '>' +
+        App.esc(indent + x.title + (x.name ? ' — ' + x.name : '')) + '</option>';
+    }).join('');
+
+    const sameParent = function (x) {
+      const a = (x.parent_id === null || x.parent_id === undefined) ? null : Number(x.parent_id);
+      const b = (e.parent_id === null || e.parent_id === undefined) ? null : Number(e.parent_id);
+      return a === b;
+    };
+    const siblings = orgEntries.filter(sameParent).sort(orgSort);
+    const pos = siblings.findIndex(function (x) { return x.id === e.id; });
+    const last = pos < 0 || pos >= siblings.length - 1;
+
+    return '<div class="og-row' + (e.status === 'published' ? ' is-published' : '') +
+        '" data-og-row="' + e.id + '">' +
+      '<div class="og-thumb">' +
+        '<img src="' + App.esc(portrait || ORG_PLACEHOLDER) + '" alt=""' +
+          ' onerror="this.onerror=null;this.src=\'' + ORG_PLACEHOLDER + '\'">' +
+        (portrait
+          ? '<span class="badge ok">Picture set</span>'
+          : '<span class="badge warn">Using placeholder</span>') +
+      '</div>' +
+      '<div class="og-main">' +
+        '<div class="og-head">' +
+          '<h3 class="og-title">' + App.esc(e.title) + '</h3>' +
+          '<span class="integ">' +
+            '<span class="badge ' + (e.status === 'published' ? 'ok' : 'warn') + '">' +
+              App.esc(e.status) + '</span>' +
+            '<span class="badge muted">' +
+              App.esc(ORG_CATEGORY_LABEL[e.category] || e.category) + '</span>' +
+            (kids ? '<span class="badge info">' + kids + ' direct report' +
+              (kids === 1 ? '' : 's') + '</span>' : '') +
+            (parent ? '' : '<span class="badge muted">top level</span>') +
+          '</span>' +
+        '</div>' +
+        '<div class="og-fields">' +
+          '<div class="field grow"><label>Name</label>' +
+            '<input data-og-field="name" maxlength="160" value="' + App.esc(e.name || '') +
+            '" placeholder="Name to be added"></div>' +
+          '<div class="field grow"><label>Reports to</label>' +
+            '<select data-og-field="parent"><option value="">— Top level —</option>' +
+            parentOptions + '</select></div>' +
+          '<label class="og-toggle"><input type="checkbox" data-og-field="published"' +
+            (e.status === 'published' ? ' checked' : '') + '> Published</label>' +
+        '</div>' +
+        (e.description
+          ? '<p class="og-desc">' + App.esc(e.description) + '</p>'
+          : '<p class="og-desc">No note yet — open <strong>Edit</strong> to add one.</p>') +
+      '</div>' +
+      '<div class="og-actions">' +
+        '<button class="btn btn-sm btn-outline" type="button" data-og-upload="' + e.id + '">' +
+          (portrait ? 'Replace picture' : 'Upload picture') + '</button>' +
+        '<button class="btn btn-sm" type="button" data-og-save="' + e.id + '" disabled>Save</button>' +
+        '<button class="btn btn-sm btn-outline" type="button" data-og-edit="' + e.id +
+          '">Edit details</button>' +
+        '<button class="btn btn-sm btn-ghost" type="button" data-og-move="-1" data-og-id="' +
+          e.id + '"' + (pos <= 0 ? ' disabled' : '') +
+          ' aria-label="Move ' + App.esc(e.title) + ' up">&#9650;</button>' +
+        '<button class="btn btn-sm btn-ghost" type="button" data-og-move="1" data-og-id="' +
+          e.id + '"' + (last ? ' disabled' : '') +
+          ' aria-label="Move ' + App.esc(e.title) + ' down">&#9660;</button>' +
+        '<button class="btn btn-sm btn-danger" type="button" data-og-del="' + e.id +
+          '">Delete</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /* Per-row save: only the fields that live in the row (name, manager,
+   * publication) — titles, ordering and notes still go through Edit. */
+  function saveOrgRow(row) {
+    if (!row) return;
+    const id = Number(row.getAttribute('data-og-row'));
+    const rec = orgEntries.find(function (x) { return x.id === id; });
+    if (!rec) return;
+    const nameInput = row.querySelector('[data-og-field="name"]');
+    const parentSel = row.querySelector('[data-og-field="parent"]');
+    const pubBox = row.querySelector('[data-og-field="published"]');
+    const payload = {
+      name: (nameInput ? nameInput.value : '').trim(),
+      parent_id: (parentSel && parentSel.value) ? parentSel.value : null,
+      status: (pubBox && pubBox.checked) ? 'published' : 'draft'
+    };
+    const btn = row.querySelector('[data-og-save]');
+    App.busy(btn, function () {
+      return App.api('/api/org-chart/' + id, { method: 'PUT', body: payload });
+    }).then(function () {
+      App.toast(payload.status === 'published'
+        ? 'Saved and published to the homepage.'
+        : 'Saved. The entry stays hidden from the public site until it is published.', 'ok');
+      fetchOrgRows();
+    }).catch(function (e) { App.toast(e.message, 'err'); });
+  }
+  /* Picture slot for one position: pick → preview → confirm → upload → PUT. */
+  function uploadOrgPortrait(row) {
+    if (!row) return;
+    const id = Number(row.getAttribute('data-og-row'));
+    const rec = orgEntries.find(function (x) { return x.id === id; });
+    if (!rec) return;
+    const chooser = document.createElement('input');
+    chooser.type = 'file';
+    chooser.accept = 'image/jpeg,image/png,image/webp';
+    chooser.onchange = function () {
+      const file = chooser.files && chooser.files[0];
+      if (!file) return;
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+        App.toast('Choose a JPEG, PNG or WebP image.', 'err');
+        return;
+      }
+      if (file.size > ORG_MAX_PORTRAIT) {
+        App.toast('That image is ' + Math.round(file.size / 1048576) +
+          ' MB — portraits must be 2 MB or smaller.', 'err');
+        return;
+      }
+      confirmOrgPortrait(id, rec, file);
+    };
+    chooser.click();
+  }
+
+  function confirmOrgPortrait(id, rec, file) {
+    const previewUrl = URL.createObjectURL(file);
+    const box = App.openModal(
+      '<h3>' + (rec.portrait ? 'Replace' : 'Upload') + ' picture</h3>' +
+      '<p class="muted" style="margin-top:-6px">' + App.esc(rec.title) +
+        (rec.name ? ' — ' + App.esc(rec.name) : '') + '</p>' +
+      '<div class="img-edit"><div class="img-preview">' +
+        '<img src="' + previewUrl + '" alt="Preview of the selected portrait">' +
+      '</div></div>' +
+      '<p class="kv-note">JPEG, PNG or WebP up to 2 MB. The picture is resized before upload, ' +
+      'checked by the server and stored inside the portal — then attached to this position.</p>' +
+      '<p class="form-error" id="ogp-err" hidden></p>' +
+      '<div class="modal-actions">' +
+        '<button class="btn btn-ghost" type="button" id="ogp-cancel">Cancel</button>' +
+        '<button class="btn" type="button" id="ogp-save">Save picture</button>' +
+      '</div>', { wide: true });
+    const release = function () { URL.revokeObjectURL(previewUrl); };
+
+    App.on(box.querySelector('#ogp-cancel'), 'click', function () {
+      release();
+      App.closeModal();
+    });
+    App.on(box.querySelector('#ogp-save'), 'click', function () {
+      const err = box.querySelector('#ogp-err');
+      err.hidden = true;
+      App.busy(this, function () {
+        return resizeImage(file).then(function (prepared) {
+          const fd = new FormData();
+          fd.append('file', prepared.blob, prepared.name);
+          return App.api('/api/settings/upload', { method: 'POST', body: fd });
+        });
+      }).then(function (res) {
+        if (!res || !res.url) throw new Error('The server did not return an image URL.');
+        return App.api('/api/org-chart/' + id, { method: 'PUT', body: { portrait: res.url } });
+      }).then(function () {
+        release();
+        App.closeModal();
+        App.toast('Picture saved for ' + rec.title + '.', 'ok');
+        fetchOrgRows();
+      }).catch(function (e) {
+        err.hidden = false;
+        err.textContent = e && e.message ? e.message : 'The picture could not be saved.';
+      });
+    });
+  }
+
+  /* Reorder inside one parent's group (mirrors the school rows). */
+  function moveOrgEntry(id, dir) {
+    const rec = orgEntries.find(function (x) { return x.id === id; });
+    if (!rec) return;
+    const key = function (x) {
+      return (x.parent_id === null || x.parent_id === undefined) ? null : Number(x.parent_id);
+    };
+    const siblings = orgEntries.filter(function (x) { return key(x) === key(rec); }).sort(orgSort);
+    const i = siblings.findIndex(function (x) { return x.id === id; });
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= siblings.length) return;
+    const a = siblings[i];
+    const b = siblings[j];
+    const ao = Number(a.sort_order || 0);
+    const bo = Number(b.sort_order || 0);
+    /* Orders are swapped (or nudged one step when they were tied), so two
+     * rows never stay tied and the next move still works. */
+    const aOrder = (ao !== bo) ? bo : ao + dir;
+    const bOrder = (ao !== bo) ? ao : ao;
+    Promise.all([
+      App.api('/api/org-chart/' + a.id, { method: 'PUT', body: { sort_order: aOrder } }),
+      App.api('/api/org-chart/' + b.id, { method: 'PUT', body: { sort_order: bOrder } })
+    ]).then(function () {
+      App.toast('Display order updated.', 'ok');
+      fetchOrgRows();
+    }).catch(function (e) { App.toast(e.message, 'err'); });
   }
   /* The entry itself plus every descendant — used to keep the parent picker
    * from offering a loop (an entry can never report into its own subtree). */
@@ -3177,7 +3429,7 @@
               '<button class="btn btn-sm btn-ghost" type="button" id="og-f-clear">Remove</button>' +
             '</div>' +
           '</div>' +
-          '<p class="kv-note mt-0">JPEG, PNG or WebP up to 3 MB. Portraits are stored inside the portal — outside image links are not accepted.</p>' +
+          '<p class="kv-note mt-0">JPEG, PNG or WebP up to 2 MB. Portraits are stored inside the portal — outside image links are not accepted.</p>' +
         '</div>' +
       '</div>' +
       '<p class="form-error" id="og-f-err" hidden></p>' +
@@ -3210,6 +3462,11 @@
         if (!file) return;
         if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
           App.toast('Choose a JPEG, PNG or WebP image.', 'err');
+          return;
+        }
+        if (file.size > ORG_MAX_PORTRAIT) {
+          App.toast('That image is ' + Math.round(file.size / 1048576) +
+            ' MB — portraits must be 2 MB or smaller.', 'err');
           return;
         }
         App.busy(btn, function () {
