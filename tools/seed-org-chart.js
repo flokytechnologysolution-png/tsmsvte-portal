@@ -20,11 +20,42 @@
  * refreshed, and a name/portrait/status an administrator has set is left
  * untouched.  Runs through the universal async db helpers, so it works on
  * SQLite (local) and PostgreSQL (production, requires --allow-prod).
+ *
+ * Flags (after "--"):
+ *   --allow-prod        required when DATABASE_URL is set (live database).
+ *   --lower-layers      skip the two leadership rows (Commissioner, Permanent
+ *                       Secretary) and insert ONLY the directorates, heads and
+ *                       desks.  Use this on a database where the ministry has
+ *                       already entered its own verified leadership through the
+ *                       admin console: the three lower layers are attached
+ *                       under the existing published entry whose title matches
+ *                       /permanent secretary/i instead of the seed's own
+ *                       "Permanent Secretary" placeholder.
+ *   --anchor-id=<n>     with --lower-layers: attach to this org_chart id
+ *                       instead of auto-detecting the Permanent Secretary.
  */
 'use strict';
 
 const db = require('../db');
 const { clean } = require('../middleware/validate');
+
+const FLAGS = process.argv.slice(2);
+const ALLOW_PROD = FLAGS.indexOf('--allow-prod') !== -1;
+const LOWER_LAYERS = FLAGS.indexOf('--lower-layers') !== -1;
+const ANCHOR_FLAG = FLAGS.find(function (f) { return f.indexOf('--anchor-id=') === 0; });
+const ANCHOR_ID = ANCHOR_FLAG ? Number(ANCHOR_FLAG.slice('--anchor-id='.length)) : null;
+if (ANCHOR_FLAG && !Number.isInteger(ANCHOR_ID)) {
+  console.error('--anchor-id must be an integer.');
+  process.exit(1);
+}
+
+/* Production needs an explicit opt-in: this publishes entries straight to the
+ * live chart. */
+if (process.env.DATABASE_URL && !ALLOW_PROD) {
+  console.error('Refusing to seed the organization chart on a production database.');
+  console.error('Run again with --allow-prod if that is really intended.');
+  process.exit(1);
+}
 
 /* The hierarchy, parents always before children. */
 const ENTRIES = [
@@ -93,15 +124,6 @@ const ENTRIES = [
   }
 ];
 
-/* Production needs an explicit opt-in: this publishes entries straight to the
- * live chart. */
-const ALLOW_PROD = process.argv.indexOf('--allow-prod') !== -1;
-if (process.env.DATABASE_URL && !ALLOW_PROD) {
-  console.error('Refusing to seed the organization chart on a production database.');
-  console.error('Run again with --allow-prod if that is really intended.');
-  process.exit(1);
-}
-
 async function main() {
   await db.ready;
 
@@ -110,9 +132,49 @@ async function main() {
     idsByTitle[String(row.title || '').trim()] = Number(row.id);
   });
 
-  const report = { inserted: 0, updated: 0, unchanged: 0 };
+  /* --lower-layers: the ministry already entered its own verified leadership
+   * (SGS, Commissioner, Permanent Secretary) through the admin console.  Do
+   * not insert the seed's placeholder leadership; attach the lower layers
+   * under the existing Permanent Secretary instead. */
+  if (LOWER_LAYERS) {
+    let anchor = null;
+    if (ANCHOR_ID !== null) {
+      anchor = await db.get('SELECT id, title FROM org_chart WHERE id = ?', [ANCHOR_ID]);
+      if (!anchor) throw new Error('No org_chart entry with id ' + ANCHOR_ID + '.');
+    } else {
+      const rows = await db.query(
+        "SELECT id, title FROM org_chart WHERE status = 'published' AND category = 'leadership' ORDER BY id"
+      );
+      const matches = rows.filter(function (r) {
+        return /permanent\s+secretary/i.test(String(r.title || ''));
+      });
+      if (matches.length > 1) {
+        throw new Error(
+          'Several entries look like the Permanent Secretary (' +
+          matches.map(function (m) { return '#' + m.id + ' ' + m.title; }).join('; ') +
+          '). Re-run with --anchor-id=<n> to pick one.'
+        );
+      }
+      anchor = matches[0] || null;
+      if (!anchor) {
+        throw new Error(
+          'No published "Permanent Secretary" entry found to attach to. ' +
+          'Enter it through the admin console first, or re-run with --anchor-id=<n>.'
+        );
+      }
+    }
+    idsByTitle['Permanent Secretary'] = Number(anchor.id);
+    console.log('Lower layers will hang under existing entry #' + anchor.id + ': ' + anchor.title);
+  }
+
+  const report = { inserted: 0, updated: 0, unchanged: 0, skipped: 0 };
 
   for (const entry of ENTRIES) {
+    if (LOWER_LAYERS && entry.category === 'leadership') {
+      report.skipped += 1;
+      console.log('  skipped  ' + entry.title + ' (already entered by the ministry)');
+      continue;
+    }
     const title = clean(entry.title).slice(0, 160);
     const parentId = entry.parent ? idsByTitle[entry.parent] : null;
     if (entry.parent && !parentId) {
@@ -156,7 +218,8 @@ async function main() {
   }
 
   console.log('\nOrganization chart: ' + report.inserted + ' inserted, ' +
-    report.updated + ' updated, ' + report.unchanged + ' unchanged.');
+    report.updated + ' updated, ' + report.unchanged + ' unchanged' +
+    (report.skipped ? ', ' + report.skipped + ' skipped' : '') + '.');
   console.log('Published entries now appear on the homepage immediately. Add verified');
   console.log('names and portraits through Admin \u2192 Organization chart.');
   await db.close();
