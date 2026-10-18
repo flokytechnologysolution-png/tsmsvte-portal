@@ -775,45 +775,150 @@ table.data td.actions { white-space: nowrap; }
 .service-card p{margin:0}
 
 /* --------------------------- organization chart ------------------------- *
- * Public homepage hierarchy (rendered by js/pages/org-chart.js). Nested <ul>
- * levels with light connector lines; stacks into an indented list on phones.
+ * Public homepage hierarchy (rendered by js/pages/org-chart.js), directly
+ * above the Portal section.  Pure HTML + CSS connectors (no chart library):
+ *
+ *   chain      vertical leadership spine, links joined by a line
+ *   side group hangs beside the chain link it reports to (agencies)
+ *   branch     one horizontal rail under the last chain link
+ *   units      hanging underneath each card on the branch, on their own rail
+ *
+ * Colours come from the tokens set on #org-structure, so the chart follows the
+ * site palette in light mode and gets its own dark palette below.
  */
-.org-chart{margin-top:6px}
-.org-chart ul{list-style:none;margin:0;padding:0;display:flex;justify-content:center;align-items:flex-start;flex-wrap:wrap}
-.org-chart li{display:flex;flex-direction:column;align-items:center;position:relative}
+#org-structure{
+  --org-card:var(--card);
+  --org-line:var(--line);
+  --org-ink:var(--ink);
+  --org-muted:var(--muted);
+  --org-tint:var(--primary-tint);
+  --org-em:#0b4d2a;
+  --org-accent:var(--accent,#f2b705);
+}
+.org-chart{margin-top:18px;overflow-x:auto;overflow-y:hidden;padding-bottom:4px}
+.org-tree{width:100%}
+.org-chart ul{list-style:none;margin:0;padding:0}
+.org-spine{display:flex;flex-direction:column;align-items:center}
+.org-spine-item{position:relative;display:flex;justify-content:center}
+.org-spine-item+.org-spine-item{margin-top:30px}
+/* connector between two chain links (the last link is joined by the branch) */
+.org-spine-item:not(:last-child)::after{
+  content:'';position:absolute;top:100%;left:50%;height:30px;
+  border-left:2px solid var(--org-line)}
+.org-spine-slot{position:relative;display:flex;justify-content:center}
+/* side group: sits beside its chain link, joined by one horizontal line */
+.org-side-group{
+  position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:46px}
+.org-side-group::before{
+  content:'';position:absolute;top:34px;left:-46px;width:46px;
+  border-top:2px solid var(--org-line)}
+.org-side-list{display:flex;flex-direction:column;gap:14px;width:212px}
+/* ------------------------------ cards --------------------------------- */
 .org-card{
-  background:var(--card);border:1px solid var(--line);border-radius:var(--radius,12px);
-  box-shadow:var(--shadow-sm);padding:16px 18px;margin:0 10px;text-align:center;
-  max-width:270px;min-width:190px}
-.org-card .org-portrait img{
-  width:104px;height:128px;object-fit:cover;border-radius:10px;display:block;margin:0 auto 10px;
-  border:2px solid var(--accent,#c79a2e);background:var(--primary-tint)}
+  background:var(--org-card);border:1px solid var(--org-line);border-radius:12px;
+  box-shadow:var(--shadow-sm);padding:16px 18px;text-align:center;
+  display:flex;flex-direction:column;align-items:center}
+.org-card--chain{width:min(300px,100%)}
+.org-card--compact{width:170px;padding:12px 12px}
+.org-card--unit{width:100%;padding:10px 12px}
+.org-portrait img{
+  width:104px;height:128px;object-fit:cover;border-radius:10px;display:block;
+  margin:0 auto 10px;border:2px solid var(--org-accent);background:var(--org-tint)}
+.org-card--compact .org-portrait img{width:64px;height:78px;margin-bottom:8px}
+.org-card--unit .org-portrait img{width:46px;height:56px;margin-bottom:6px;border-width:1.5px}
 .org-card .org-cat{
   display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
-  text-transform:uppercase;color:var(--primary);margin-bottom:4px}
-.org-card .org-title{margin:0 0 4px;font-size:16px;color:var(--ink)}
-.org-card .org-name{margin:0;font-weight:600;color:var(--primary-dark,#0b4d2a)}
-.org-card .org-desc{margin:8px 0 0;font-size:13.5px;color:var(--muted)}
-/* connectors: a stub from each parent down to its children row, then a
-   horizontal rail across the siblings (first/last clip their outer half) */
-.org-chart .org-children{margin-top:30px;position:relative}
-.org-chart .org-children::before{
-  content:'';position:absolute;top:-30px;left:50%;height:30px;border-left:2px solid var(--line)}
-.org-chart .org-children>.org-node{padding-top:30px}
-.org-chart .org-children>.org-node::before{
-  content:'';position:absolute;top:0;left:50%;height:30px;border-left:2px solid var(--line)}
-.org-chart .org-children>.org-node::after{
-  content:'';position:absolute;top:0;left:0;right:0;border-top:2px solid var(--line)}
-.org-chart .org-children>.org-node:first-child::after{left:50%}
-.org-chart .org-children>.org-node:last-child::after{right:50%}
-.org-chart .org-children>.org-node:only-child::after{display:none}
-@media (max-width:640px){
-  .org-chart ul{display:block}
-  .org-card{max-width:none;width:100%;margin:0 0 10px;text-align:left}
-  .org-card .org-portrait img{margin:0 0 10px}
-  .org-chart .org-children{margin-top:0;padding-left:16px;border-left:2px solid var(--line);margin-left:12px}
-  .org-chart .org-children::before,
-  .org-chart .org-children>.org-node::before,
-  .org-chart .org-children>.org-node::after{display:none}
-  .org-chart .org-children>.org-node{padding-top:0;align-items:stretch}
+  text-transform:uppercase;color:var(--org-em);margin-bottom:4px}
+.org-card .org-title{margin:0 0 4px;font-size:17px;line-height:1.3;color:var(--org-ink)}
+.org-card--compact .org-title{font-size:14.5px}
+.org-card--unit .org-title{font-size:13.5px;margin-bottom:2px}
+.org-card .org-name{margin:0;font-weight:600;font-size:14.5px;color:var(--org-em);
+  overflow-wrap:anywhere}
+.org-card--compact .org-name,.org-card--unit .org-name{font-size:13.5px}
+.org-card .org-desc{margin:8px 0 0;font-size:13.5px;color:var(--org-muted);text-align:left;
+  overflow-wrap:anywhere}
+.org-card--unit .org-desc{display:none}
+/* ------------------------------ branch --------------------------------- */
+/* the drop from the last chain link down to the rail, then the rail itself */
+.org-branch{position:relative;padding-top:34px;margin-top:2px}
+.org-branch::before{
+  content:'';position:absolute;top:0;left:50%;height:34px;
+  border-left:2px solid var(--org-line)}
+.org-branch-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:6px}
+.org-branch-row{
+  position:relative;display:flex;justify-content:center;gap:18px;min-width:max-content}
+.org-branch-row::after{           /* the horizontal rail across the siblings */
+  content:'';position:absolute;top:0;left:0;right:0;
+  border-top:2px solid var(--org-line)}
+.org-branch-item{
+  position:relative;display:flex;flex-direction:column;align-items:center;padding-top:34px}
+.org-branch-item::before{          /* stub from the rail down to the card */
+  content:'';position:absolute;top:0;left:50%;height:34px;
+  border-left:2px solid var(--org-line)}
+/* ------------------------------ units --------------------------------- */
+.org-drop{position:relative;width:100%;margin-top:20px}
+/* elbow: down from the card's centre, then across to the units rail */
+.org-drop::before{
+  content:'';position:absolute;top:-20px;left:50%;height:20px;
+  border-left:2px solid var(--org-line)}
+.org-drop::after{
+  content:'';position:absolute;top:-20px;left:-20px;width:calc(50% + 20px);
+  border-top:2px solid var(--org-line)}
+.org-units{margin:0;padding:0 0 0 18px;border-left:2px solid var(--org-line);
+  list-style:none;width:100%}
+.org-unit{position:relative;margin-top:12px}
+.org-unit:first-child{margin-top:0}
+.org-unit::before{                 /* tick from the rail to the unit card */
+  content:'';position:absolute;left:-20px;top:26px;width:16px;
+  border-top:2px solid var(--org-line)}
+.org-scroll-hint{margin:12px 0 0;font-size:13px;color:var(--org-muted);text-align:center}
+.org-scroll-hint[hidden]{display:none}
+/* ---------------------------- dark mode -------------------------------- */
+@media (prefers-color-scheme:dark){
+  #org-structure{
+    --org-card:#17241d;--org-line:#33463c;--org-ink:#e9f1ec;--org-muted:#a2b4aa;
+    --org-tint:#0d1712;--org-em:#7fd3a6;
+    background:#0f1a14;border-color:#22312a}
+  #org-structure .section-title{color:var(--org-ink)}
+  #org-structure .section-kicker{color:var(--org-accent)}
+  #org-structure .section-lede{color:var(--org-muted)}
+  #org-structure .empty-state{background:var(--org-card);border-color:var(--org-line);
+    color:var(--org-muted)}
+  #org-structure .empty-state strong{color:var(--org-ink)}
 }
+/* --------------- tablet / mobile: indented vertical list ---------------- */
+@media (max-width:1000px){
+  .org-chart{overflow-x:hidden;padding-bottom:0}
+  .org-tree{width:100%}
+  .org-spine{display:block;width:100%}
+  .org-spine-item,.org-spine-slot{display:block;width:100%}
+  .org-spine-item+.org-spine-item{margin-top:14px}
+  .org-spine-item:not(:last-child)::after{display:none}
+  .org-card,.org-card--chain,.org-card--compact,.org-card--unit{
+    width:100%;max-width:none;margin:0;text-align:left;align-items:flex-start}
+  .org-portrait img,.org-card--compact .org-portrait img,.org-card--unit .org-portrait img{
+    margin:0 0 10px}
+  .org-card .org-desc{display:block}
+  .org-side-group{position:static;transform:none;margin:14px 0 0 16px}
+  .org-side-group::before{display:none}
+  .org-side-list{width:auto;gap:12px}
+  .org-branch{
+    margin:14px 0 0 8px;padding:0 0 0 14px;border-left:2px solid var(--org-line)}
+  .org-branch::before,.org-branch-row::after,.org-branch-item::before{display:none}
+  .org-branch-scroll{overflow-x:visible;padding-bottom:0}
+  .org-branch-row{display:block;min-width:0;width:100%}
+  .org-branch-item{
+    display:block;padding:0 0 0 16px;margin-top:14px;
+    border-left:2px solid var(--org-line)}
+  .org-branch-item::before{
+    display:block;top:24px;left:-16px;width:12px;height:0;
+    border-left:0;border-top:2px solid var(--org-line)}
+  .org-branch-item:first-child{margin-top:6px}
+  .org-drop{margin-top:14px;margin-left:6px}
+  .org-drop::before,.org-drop::after,.org-unit::before{display:none}
+  .org-units{border-left:2px solid var(--org-line);padding-left:14px;margin-top:8px;
+    padding-top:0}
+  .org-unit{margin-top:10px;padding-left:0}
+  .org-scroll-hint{display:none}
+}
+
