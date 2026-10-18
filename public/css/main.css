@@ -795,32 +795,41 @@ table.data td.actions { white-space: nowrap; }
   --org-em:#0b4d2a;
   --org-accent:var(--accent,#f2b705);
 }
-.org-chart{margin-top:18px;overflow-x:auto;overflow-y:hidden;padding-bottom:4px}
-.org-tree{width:100%}
+.org-chart{margin-top:18px;padding-bottom:4px}
+.org-tree{width:100%;max-width:100%}
 .org-chart ul{list-style:none;margin:0;padding:0}
 .org-spine{display:flex;flex-direction:column;align-items:center}
 .org-spine-item{position:relative;display:flex;justify-content:center}
 .org-spine-item+.org-spine-item{margin-top:30px}
-/* connector between two chain links (the last link is joined by the branch) */
+/* connector from a chain link's block down to the next link's card */
 .org-spine-item:not(:last-child)::after{
   content:'';position:absolute;top:100%;left:50%;height:30px;
   border-left:2px solid var(--org-line)}
-.org-spine-slot{position:relative;display:flex;justify-content:center}
-/* side group: sits beside its chain link, joined by one horizontal line */
-.org-side-group{
-  position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:46px}
+.org-spine-slot{position:relative;display:block;width:100%}
+.org-spine-slot>.org-card--chain{margin:0 auto}
+/* side group: a wrapping row UNDER its chain link, one short drop joining it */
+.org-side-group{position:relative;width:100%;margin-top:30px}
 .org-side-group::before{
-  content:'';position:absolute;top:34px;left:-46px;width:46px;
+  content:'';position:absolute;top:-30px;left:50%;height:30px;
+  border-left:2px solid var(--org-line)}
+.org-side-list{
+  position:relative;display:flex;flex-wrap:wrap;justify-content:center;
+  gap:16px 18px;padding-top:34px}
+.org-side-list::after{             /* the horizontal rail across the row */
+  content:'';position:absolute;top:0;left:0;right:0;
   border-top:2px solid var(--org-line)}
-.org-side-list{display:flex;flex-direction:column;gap:14px;width:212px}
+.org-side-item{position:relative}
+.org-side-item::before{            /* stub from the rail down to each card */
+  content:'';position:absolute;top:-34px;left:50%;height:34px;
+  border-left:2px solid var(--org-line)}
 /* ---------------------- leadership top row ------------------------------ */
 /* Extra leadership roots (SGS, the Commissioner) sit ABOVE the chain, on a
  * rail of their own that drops down into the Permanent Secretary — the order
  * of the ministry's chart diagram. Hidden connectors on small screens. */
-.org-leaders{position:relative;padding-bottom:30px}
+.org-leaders{position:relative;padding-bottom:30px;max-width:100%}
 .org-leaders-row{
-  position:relative;width:max-content;margin:0 auto;
-  display:flex;gap:18px;padding-bottom:34px}
+  position:relative;width:100%;max-width:100%;margin:0 auto;
+  display:flex;flex-wrap:wrap;justify-content:center;gap:16px 18px;padding-bottom:34px}
 .org-leaders-row::after{            /* the horizontal rail across the leaders */
   content:'';position:absolute;bottom:0;left:0;right:0;
   border-top:2px solid var(--org-line)}
@@ -862,9 +871,9 @@ table.data td.actions { white-space: nowrap; }
 .org-branch::before{
   content:'';position:absolute;top:0;left:50%;height:34px;
   border-left:2px solid var(--org-line)}
-.org-branch-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:6px}
+.org-branch-scroll{padding-bottom:6px}
 .org-branch-row{
-  position:relative;display:flex;justify-content:center;gap:18px;min-width:max-content}
+  position:relative;display:flex;flex-wrap:wrap;justify-content:center;gap:16px 18px}
 .org-branch-row::after{           /* the horizontal rail across the siblings */
   content:'';position:absolute;top:0;left:0;right:0;
   border-top:2px solid var(--org-line)}
@@ -889,8 +898,6 @@ table.data td.actions { white-space: nowrap; }
 .org-unit::before{                 /* tick from the rail to the unit card */
   content:'';position:absolute;left:-20px;top:26px;width:16px;
   border-top:2px solid var(--org-line)}
-.org-scroll-hint{margin:12px 0 0;font-size:13px;color:var(--org-muted);text-align:center}
-.org-scroll-hint[hidden]{display:none}
 /* ---------------------------- dark mode -------------------------------- */
 @media (prefers-color-scheme:dark){
   #org-structure{
@@ -917,18 +924,20 @@ table.data td.actions { white-space: nowrap; }
   .org-portrait img,.org-card--compact .org-portrait img,.org-card--unit .org-portrait img{
     margin:0 0 10px}
   .org-card .org-desc{display:block}
-  .org-side-group{position:static;transform:none;margin:14px 0 0 16px}
-  .org-side-group::before{display:none}
-  .org-side-list{width:auto;gap:12px}
+  .org-side-group{margin-top:14px}
+  .org-side-group::before{top:-14px;height:14px}
+  .org-side-list{width:100%;gap:12px;padding-top:14px}
+  .org-side-list::after{display:block}
+  .org-side-item::before{top:-14px;height:14px}
   .org-leaders{padding-bottom:14px}
-  .org-leaders-row{width:100%;display:block;padding-bottom:0}
+  .org-leaders-row{display:flex;padding-bottom:14px}
   .org-leaders-row::after,.org-leaders-item::after,.org-leaders::before{display:none}
   .org-leaders-item+.org-leaders-item{margin-top:14px}
   .org-branch{
     margin:14px 0 0 8px;padding:0 0 0 14px;border-left:2px solid var(--org-line)}
   .org-branch::before,.org-branch-row::after,.org-branch-item::before{display:none}
-  .org-branch-scroll{overflow-x:visible;padding-bottom:0}
-  .org-branch-row{display:block;min-width:0;width:100%}
+  .org-branch-scroll{padding-bottom:0}
+  .org-branch-row{display:flex;width:100%}
   .org-branch-item{
     display:block;padding:0 0 0 16px;margin-top:14px;
     border-left:2px solid var(--org-line)}
@@ -941,7 +950,6 @@ table.data td.actions { white-space: nowrap; }
   .org-units{border-left:2px solid var(--org-line);padding-left:14px;margin-top:8px;
     padding-top:0}
   .org-unit{margin-top:10px;padding-left:0}
-  .org-scroll-hint{display:none}
 }
 
 

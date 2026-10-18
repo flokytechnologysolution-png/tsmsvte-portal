@@ -497,6 +497,49 @@ async function main() {
       (html.split('org-card--chain').length - 1));
   } catch (e) { record('17. leadership roots render above the chain, the rest in place', false, e.message); }
 
+  /* 18. fit-to-page: no sideways scrolling anywhere ------------------------ */
+  try {
+    const vm18 = require('vm');
+    const src18 = fs.readFileSync(path.join(ROOT, 'public', 'js', 'pages', 'org-chart.js'), 'utf8');
+    const sandbox18 = {
+      window: {},
+      document: { getElementById: function () { return null; }, querySelector: function () { return null; } },
+      App: { ready: function () {}, esc: function (s) { return String(s); } }
+    };
+    vm18.createContext(sandbox18);
+    vm18.runInContext(src18, sandbox18);
+    const org18 = sandbox18.window && sandbox18.window.__orgChart;
+    const E18 = function (id, parent_id, title, category, order) {
+      return { id: id, parent_id: parent_id, title: title, name: '', category: category,
+        description: '', portrait: '', sort_order: order || 0, status: 'published' };
+    };
+    const htmlSrc = org18.render(org18.buildLayout([
+      E18(1, null, 'Secretary to the Government (SGS)', 'leadership', 1),
+      E18(2, null, 'Hon. Commissioner', 'leadership', 2),
+      E18(3, null, 'Permanent Secretary', 'leadership', 3),
+      E18(4, 3, 'Director of Admin', 'directorate', 0),
+      E18(5, 3, 'Director of Vocational', 'directorate', 1),
+      E18(6, 3, 'Director of Planning', 'directorate', 2),
+      E18(7, 5, 'Head, Vocational Studies', 'unit_board', 0)
+    ]));
+    const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'main.css'), 'utf8');
+    const noScrollMarkup = htmlSrc.indexOf('org-branch-scroll') === -1 &&
+      htmlSrc.indexOf('org-scroll-hint') === -1;
+    /* Every fixed horizontal row must wrap; nothing may pin a min content
+     * width or scroll sideways. */
+    const wrapsOk = /\.org-leaders-row\{[^}]*flex-wrap:\s*wrap/.test(css) &&
+      /\.org-side-list\{[^}]*flex-wrap:\s*wrap/.test(css) &&
+      /\.org-branch-row\{[^}]*flex-wrap:\s*wrap/.test(css);
+    const scrollGone = css.indexOf('org-branch-scroll{overflow-x:auto') === -1 &&
+      css.indexOf('min-width:max-content') === -1 &&
+      css.indexOf('width:max-content') === -1 &&
+      css.indexOf('.org-scroll-hint') === -1 &&
+      css.indexOf('overflow-x:auto') === -1;
+    record('18. the whole chart fits the page width, no sideways scrolling',
+      noScrollMarkup && wrapsOk && scrollGone,
+      'markup=' + noScrollMarkup + ' wraps=' + wrapsOk + ' css=' + scrollGone);
+  } catch (e) { record('18. the whole chart fits the page width, no sideways scrolling', false, e.message); }
+
   /* ---- report: close resources first, then exit NATURALLY ----------------- */
   const failed = results.filter(function (r) { return !r.pass; });
   console.log('\n' + results.length + ' tests, ' +

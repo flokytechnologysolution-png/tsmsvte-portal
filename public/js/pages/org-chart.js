@@ -213,11 +213,11 @@
     var spineHtml = layout.spine.map(function (e) {
       var group = layout.side[e.id] || [];
       var groupHtml = group.length
-        ? '<aside class="org-side-group"><ul class="org-side-list">' +
+        ? '<div class="org-side-group"><ul class="org-side-list">' +
             group.map(function (s) {
               return '<li class="org-side-item">' + cardHtml(s, 'compact') + '</li>';
             }).join('') +
-          '</ul></aside>'
+          '</ul></div>'
         : '';
       return '<li class="org-spine-item"><div class="org-spine-slot">' +
         cardHtml(e, 'chain') + groupHtml + '</div></li>';
@@ -226,14 +226,12 @@
     var branchHtml = '';
     if (layout.branch.length) {
       branchHtml = '<div class="org-branch">' +
-        '<div class="org-branch-scroll"><ul class="org-branch-row">' +
+        '<ul class="org-branch-row">' +
           layout.branch.map(function (e) {
             return '<li class="org-branch-item">' + cardHtml(e, 'compact') +
               unitsHtml(e, layout.childMap, {}) + '</li>';
           }).join('') +
-        '</ul></div>' +
-        '<p class="org-scroll-hint" id="org-scroll-hint" hidden>' +
-          'Scroll sideways to see every position on this level.</p>' +
+        '</ul>' +
       '</div>';
     }
 
@@ -243,13 +241,9 @@
     '</div>';
   }
 
-  /* The hint only appears when the branch row really is cut off. */
-  function checkHint() {
-    var hint = document.getElementById('org-scroll-hint');
-    var scroller = document.querySelector('.org-branch-scroll');
-    if (!hint || !scroller) return;
-    if (scroller.scrollWidth > scroller.clientWidth + 4) hint.removeAttribute('hidden');
-  }
+  /* Nothing scrolls sideways: every row wraps in-flow to fit the page, so
+   * there is no overflow hint to manage. */
+  function checkHint() {}
   function load() {
     show('<div class="empty-state"><strong>Loading&hellip;</strong></div>');
     wireFallback(host());
