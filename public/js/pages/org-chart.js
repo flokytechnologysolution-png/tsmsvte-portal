@@ -172,8 +172,10 @@
       spine.push(cur);
       var kids = childMap[cur.id] || [];
       if (!kids.length) break;
+      /* Only a LEADERSHIP child keeps the spine going down: directorates
+       * never continue it, so they all land on the same branch row. */
       var continuing = kids.filter(function (k) {
-        return (childMap[k.id] || []).length > 0;
+        return k.category === 'leadership' && (childMap[k.id] || []).length > 0;
       });
       if (continuing.length === 1 && (kids.length - continuing.length) <= MAX_SIDE_GROUP) {
         var next = continuing[0];
@@ -241,9 +243,46 @@
     '</div>';
   }
 
+  /* Fit: scale the whole tree down just enough to sit inside the homepage
+   * slot — the diagram stays one clean row per level, never scrolls sideways,
+   * and re-fits on resize.  MIN_FIT stops giant charts shrinking to dust: if
+   * even that is not enough, the tree unwraps into stacked rows instead. */
+  var MIN_FIT = 0.45;
+  function fitChart() {
+    var el = host();
+    if (!el || !el.querySelector) return;
+    var tree = el.querySelector('.org-tree');
+    if (!tree) return;
+    tree.classList.remove('org-fit-wrap');
+    tree.style.transform = '';
+    tree.style.marginBottom = '';
+    if (window.innerWidth <= 1000) return;   /* mobile stacks by design */
+    var avail = el.clientWidth;
+    var need = tree.scrollWidth;
+    if (!avail || !need || need <= avail + 1) return;
+    var scale = avail / need;
+    if (scale < MIN_FIT) { tree.classList.add('org-fit-wrap'); return; }
+    tree.style.transform = 'scale(' + scale + ')';
+    /* A CSS scale does not shrink layout height — pull the gap closed. */
+    var h = tree.offsetHeight;
+    if (h) tree.style.marginBottom = '-' + Math.round(h * (1 - scale)) + 'px';
+  }
+  function wireFit() {
+    if (window.__orgFitWired) return;
+    window.__orgFitWired = true;
+    var t = null;
+    window.addEventListener('resize', function () {
+      if (t) window.clearTimeout(t);
+      t = window.setTimeout(fitChart, 120);
+    });
+    if (document && document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(function () { fitChart(); });
+    }
+    window.addEventListener('load', fitChart);
+  }
   /* Nothing scrolls sideways: every row wraps in-flow to fit the page, so
    * there is no overflow hint to manage. */
-  function checkHint() {}
+  function checkHint() { fitChart(); }
   function load() {
     show('<div class="empty-state"><strong>Loading&hellip;</strong></div>');
     wireFallback(host());
@@ -263,10 +302,10 @@
     });
   }
 
-  App.ready(function () { load(); });
+  App.ready(function () { wireFit(); load(); });
 
   /* Exposed for tools/test-org-chart.js (it runs this file in a sandbox with a
    * stubbed window/App); the page's own behaviour is unchanged. */
-  window.__orgChart = { buildLayout: buildLayout, render: render, cardHtml: cardHtml };
+  window.__orgChart = { buildLayout: buildLayout, render: render, cardHtml: cardHtml, fitChart: fitChart };
 
 })();

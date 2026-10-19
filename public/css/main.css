@@ -795,8 +795,13 @@ table.data td.actions { white-space: nowrap; }
   --org-em:#0b4d2a;
   --org-accent:var(--accent,#f2b705);
 }
-.org-chart{margin-top:18px;padding-bottom:4px}
-.org-tree{width:100%;max-width:100%}
+.org-chart{margin-top:18px;padding-bottom:4px;overflow:hidden}
+.org-tree{width:max-content;max-width:none;margin:0 auto;transform-origin:top center}
+/* fallback for giant charts: stack rows instead of shrinking past MIN_FIT */
+.org-tree.org-fit-wrap{width:100%;max-width:100%}
+.org-tree.org-fit-wrap .org-leaders-row,
+.org-tree.org-fit-wrap .org-side-list,
+.org-tree.org-fit-wrap .org-branch-row{flex-wrap:wrap;width:100%}
 .org-chart ul{list-style:none;margin:0;padding:0}
 .org-spine{display:flex;flex-direction:column;align-items:center}
 .org-spine-item{position:relative;display:flex;justify-content:center}
@@ -813,8 +818,8 @@ table.data td.actions { white-space: nowrap; }
   content:'';position:absolute;top:-30px;left:50%;height:30px;
   border-left:2px solid var(--org-line)}
 .org-side-list{
-  position:relative;display:flex;flex-wrap:wrap;justify-content:center;
-  gap:16px 18px;padding-top:34px}
+  position:relative;display:flex;flex-wrap:nowrap;justify-content:center;
+  gap:18px;padding-top:34px}
 .org-side-list::after{             /* the horizontal rail across the row */
   content:'';position:absolute;top:0;left:0;right:0;
   border-top:2px solid var(--org-line)}
@@ -828,8 +833,8 @@ table.data td.actions { white-space: nowrap; }
  * of the ministry's chart diagram. Hidden connectors on small screens. */
 .org-leaders{position:relative;padding-bottom:30px;max-width:100%}
 .org-leaders-row{
-  position:relative;width:100%;max-width:100%;margin:0 auto;
-  display:flex;flex-wrap:wrap;justify-content:center;gap:16px 18px;padding-bottom:34px}
+  position:relative;width:max-content;max-width:none;margin:0 auto;
+  display:flex;flex-wrap:nowrap;justify-content:center;gap:18px;padding-bottom:34px}
 .org-leaders-row::after{            /* the horizontal rail across the leaders */
   content:'';position:absolute;bottom:0;left:0;right:0;
   border-top:2px solid var(--org-line)}
@@ -873,7 +878,7 @@ table.data td.actions { white-space: nowrap; }
   border-left:2px solid var(--org-line)}
 .org-branch-scroll{padding-bottom:6px}
 .org-branch-row{
-  position:relative;display:flex;flex-wrap:wrap;justify-content:center;gap:16px 18px}
+  position:relative;display:flex;flex-wrap:nowrap;justify-content:center;gap:18px}
 .org-branch-row::after{           /* the horizontal rail across the siblings */
   content:'';position:absolute;top:0;left:0;right:0;
   border-top:2px solid var(--org-line)}
@@ -926,18 +931,18 @@ table.data td.actions { white-space: nowrap; }
   .org-card .org-desc{display:block}
   .org-side-group{margin-top:14px}
   .org-side-group::before{top:-14px;height:14px}
-  .org-side-list{width:100%;gap:12px;padding-top:14px}
+  .org-side-list{width:100%;flex-wrap:wrap;gap:12px;padding-top:14px}
   .org-side-list::after{display:block}
   .org-side-item::before{top:-14px;height:14px}
   .org-leaders{padding-bottom:14px}
-  .org-leaders-row{display:flex;padding-bottom:14px}
+  .org-leaders-row{display:flex;flex-wrap:wrap;width:100%;padding-bottom:14px}
   .org-leaders-row::after,.org-leaders-item::after,.org-leaders::before{display:none}
   .org-leaders-item+.org-leaders-item{margin-top:14px}
   .org-branch{
     margin:14px 0 0 8px;padding:0 0 0 14px;border-left:2px solid var(--org-line)}
   .org-branch::before,.org-branch-row::after,.org-branch-item::before{display:none}
   .org-branch-scroll{padding-bottom:0}
-  .org-branch-row{display:flex;width:100%}
+  .org-branch-row{display:flex;flex-wrap:wrap;width:100%}
   .org-branch-item{
     display:block;padding:0 0 0 16px;margin-top:14px;
     border-left:2px solid var(--org-line)}

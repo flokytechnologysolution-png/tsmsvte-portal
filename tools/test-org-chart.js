@@ -388,9 +388,9 @@ async function main() {
       return { id: id, parent_id: parent_id, title: title, name: '', category: category,
         description: '', portrait: portrait || '', sort_order: order || 0, status: 'published' };
     };
-    /* Commissioner -> Permanent Secretary -> three directors; only Vocational
-     * continues, so Admin and Planning hang beside the PS as the side group
-     * and Vocational feeds the branch row, whose two heads carry a unit each. */
+    /* Commissioner -> Permanent Secretary; the spine NEVER follows a
+     * directorate down, so all three directors share one branch row and the
+     * heads/units hang underneath their own director. */
     const entries = [
       E(1, null, 'Hon. Commissioner', '', 'leadership', 0),
       E(2, 1, 'Hon. Perm. Secretary', '/files/abcdef0123456789abcdef01', 'leadership', 0),
@@ -406,10 +406,12 @@ async function main() {
     const html = org.render(layout);
     const n = function (cls) { return (html.split(cls).length - 1); };
 
-    const shapeOk = !!layout && layout.spine.length === 3 &&
-      (layout.side[2] || []).length === 2 && layout.branch.length === 2;
-    const cardsOk = n('org-card--chain') === 3 && n('org-card--compact') === 4 &&
-      n('org-card--unit') === 2;
+    const shapeOk = !!layout && layout.spine.length === 2 &&
+      layout.spine[0].id === 1 && layout.spine[1].id === 2 &&
+      Object.keys(layout.side).length === 0 &&
+      layout.branch.map(function (e) { return e.id; }).join(',') === '3,4,5';
+    const cardsOk = n('org-card--chain') === 2 && n('org-card--compact') === 3 &&
+      n('org-card--unit') === 4;
     const portraitsOk = html.indexOf('/files/abcdef0123456789abcdef01') !== -1 &&
       n('is-placeholder') === 8;                  /* every card but the uploaded one */
     const safetyOk = html.indexOf('<script>') === -1 &&
@@ -456,7 +458,8 @@ async function main() {
         description: '', portrait: portrait || '', sort_order: order || 0, status: 'published' };
     };
     /* The production shape: SGS and Commissioner are top-level too, and the
-     * chain must still start at the Permanent Secretary (the deepest root).
+     * chain stops at the Permanent Secretary — the spine never follows a
+     * directorate, so all four sibling reports share ONE branch row.
      * A childless non-leadership root stays in the branch row. */
     const entries = [
       E(1, null, 'Secretary to the Government (SGS)', '', 'leadership', 1),
@@ -478,21 +481,20 @@ async function main() {
     const branchIds = (layout.branch || []).map(function (n) { return n.id; });
 
     const topOk = topIds.join(',') === '1,2';               /* SGS first, Commissioner beside */
-    const spineOk = layout.spine.length === 2 &&
-      layout.spine[0].id === 3 && layout.spine[1].id === 5;
-    const sideOk = (layout.side[3] || []).map(function (n) { return n.id; }).join(',') === '4,6,7';
-    const branchOk = branchIds.indexOf(8) !== -1 && branchIds.indexOf(9) !== -1 &&
-      branchIds.indexOf(12) !== -1 &&                        /* orphan still visible */
-      branchIds.indexOf(1) === -1 && branchIds.indexOf(2) === -1;
+    const spineOk = layout.spine.length === 1 && layout.spine[0].id === 3;
+    const sideOk = Object.keys(layout.side).length === 0;   /* nothing parked beside */
+    const branchOk = branchIds.join(',') === '4,5,6,7,12';  /* every directorate + orphan, one row */
     const orderOk = html.indexOf('org-leaders') !== -1 &&
       html.indexOf('org-leaders') < html.indexOf('org-spine') &&
       html.indexOf('org-spine') < html.indexOf('org-branch');
-    const cardsOk = (html.split('org-card--chain').length - 1) === 4;  /* 2 top + 2 spine */
-    const orphanVisible = html.indexOf('Orphan Unit') !== -1;
+    const cardsOk = (html.split('org-card--chain').length - 1) === 3;  /* 2 top + 1 spine */
+    const orphanVisible = html.indexOf('Orphan Unit') !== -1 &&
+      html.indexOf('Vocational Studies') !== -1 &&           /* heads hang UNDER their director */
+      html.indexOf('Trade Test Desk') !== -1;
     record('17. leadership roots render above the chain, the rest in place',
       !!org && topOk && spineOk && sideOk && branchOk && orderOk && cardsOk && orphanVisible,
       'top=[' + topIds + '] spine=[' + layout.spine.map(function (n) { return n.id; }) + ']' +
-      ' side=[' + ((layout.side[3] || []).map(function (n) { return n.id; })) + ']' +
+      ' sideKeys=[' + Object.keys(layout.side) + ']' +
       ' branch=[' + branchIds + '] chainCards=' +
       (html.split('org-card--chain').length - 1));
   } catch (e) { record('17. leadership roots render above the chain, the rest in place', false, e.message); }
@@ -513,7 +515,8 @@ async function main() {
       return { id: id, parent_id: parent_id, title: title, name: '', category: category,
         description: '', portrait: '', sort_order: order || 0, status: 'published' };
     };
-    const htmlSrc = org18.render(org18.buildLayout([
+    const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'main.css'), 'utf8');
+    const layout18 = org18.buildLayout([
       E18(1, null, 'Secretary to the Government (SGS)', 'leadership', 1),
       E18(2, null, 'Hon. Commissioner', 'leadership', 2),
       E18(3, null, 'Permanent Secretary', 'leadership', 3),
@@ -521,23 +524,26 @@ async function main() {
       E18(5, 3, 'Director of Vocational', 'directorate', 1),
       E18(6, 3, 'Director of Planning', 'directorate', 2),
       E18(7, 5, 'Head, Vocational Studies', 'unit_board', 0)
-    ]));
-    const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'main.css'), 'utf8');
-    const noScrollMarkup = htmlSrc.indexOf('org-branch-scroll') === -1 &&
+    ]);
+    /* All three directors share ONE branch row; nothing is parked beside the
+     * chain and no sideways-scroll markup is rendered. */
+    const htmlSrc = org18.render(layout18);
+    const directorsOnOneRow = layout18 &&
+      layout18.branch.map(function (e) { return e.id; }).join(',') === '4,5,6' &&
+      Object.keys(layout18.side).length === 0 &&
+      htmlSrc.split('org-branch-item').length - 1 === 3 &&
+      htmlSrc.indexOf('org-branch-scroll') === -1 &&
       htmlSrc.indexOf('org-scroll-hint') === -1;
-    /* Every fixed horizontal row must wrap; nothing may pin a min content
-     * width or scroll sideways. */
-    const wrapsOk = /\.org-leaders-row\{[^}]*flex-wrap:\s*wrap/.test(css) &&
-      /\.org-side-list\{[^}]*flex-wrap:\s*wrap/.test(css) &&
-      /\.org-branch-row\{[^}]*flex-wrap:\s*wrap/.test(css);
-    const scrollGone = css.indexOf('org-branch-scroll{overflow-x:auto') === -1 &&
-      css.indexOf('min-width:max-content') === -1 &&
-      css.indexOf('width:max-content') === -1 &&
-      css.indexOf('.org-scroll-hint') === -1 &&
-      css.indexOf('overflow-x:auto') === -1;
+    /* Every fixed horizontal row stays on ONE line (JS scales it with
+     * fitChart); only the emergency fallback unwraps, and sideways overflow
+     * is clipped inside the homepage slot. */
+    const oneLineOk = /\.org-leaders-row\{[^}]*flex-wrap:\s*nowrap/.test(css) &&
+      /\.org-branch-row\{[^}]*flex-wrap:\s*nowrap/.test(css) &&
+      /\.org-branch-row\{[^}]*justify-content:\s*center/.test(css) &&
+      css.indexOf('.org-scroll-hint') === -1;
     record('18. the whole chart fits the page width, no sideways scrolling',
-      noScrollMarkup && wrapsOk && scrollGone,
-      'markup=' + noScrollMarkup + ' wraps=' + wrapsOk + ' css=' + scrollGone);
+      directorsOnOneRow && oneLineOk,
+      'oneRow=' + directorsOnOneRow + ' oneLine=' + oneLineOk);
   } catch (e) { record('18. the whole chart fits the page width, no sideways scrolling', false, e.message); }
 
   /* ---- report: close resources first, then exit NATURALLY ----------------- */
