@@ -10,15 +10,15 @@
  *     the Government and the Commissioner sit above the chain, on a rail that
  *     feeds down into it (as on the ministry's chart diagram),
  *   • a vertical CHAIN for the leadership spine (root -> ... -> last link),
- *   • a SIDE GROUP hanging beside the chain node it reports to — the agencies
- *     attached to the Permanent Secretary, joined by a horizontal line,
- *   • one horizontal BRANCH row for the reports of the last chain node,
- *   • their SUB-UNITS hanging underneath each branch card.
+ *   • a SIDE GROUP parked under the chain node it reports to — the agencies
+ *     attached to a chain link, joined by a short drop onto its own rail,
+ *   • one vertical DIRECTOR COLUMN for the reports of the last chain node,
+ *   • their SUB-UNITS hanging underneath each director card.
  *
  * The shape is derived from the data, never hard-coded: the spine keeps
- * following its single continuing report while the other reports stay beside
- * it (at most MAX_SIDE_GROUP side entries); the node where several reports
- * lead further on becomes the branch row.
+ * following its single continuing report while the other reports stack in
+ * it (at most MAX_DIRECTORS) in one vertical director column; the node
+ * where several reports lead further on feeds that column.
  *
  * Every position without an uploaded portrait shows
  * /img/placeholder-portrait.svg, and an image that fails to load falls back
@@ -44,9 +44,10 @@
     directorate: 'Directorate',
     unit_board: 'Unit & Board'
   };
-  /* How many childless reports may sit beside a chain link as a side group
-   * before that link is treated as the branch row instead. */
-  var MAX_SIDE_GROUP = 3;
+  /* How many non-leadership reports may share one vertical director column
+   * before the column is allowed to split.  Room is reserved so new directors
+   * added from the admin console stack underneath, never sideways. */
+  var MAX_DIRECTORS = 9;
 
   function host() { return document.getElementById(HOST_ID); }
 
@@ -177,7 +178,7 @@
       var continuing = kids.filter(function (k) {
         return k.category === 'leadership' && (childMap[k.id] || []).length > 0;
       });
-      if (continuing.length === 1 && (kids.length - continuing.length) <= MAX_SIDE_GROUP) {
+      if (continuing.length === 1 && (kids.length - continuing.length) <= MAX_DIRECTORS) {
         var next = continuing[0];
         var others = kids.filter(function (k) { return k.id !== next.id; });
         if (others.length) side[cur.id] = others;

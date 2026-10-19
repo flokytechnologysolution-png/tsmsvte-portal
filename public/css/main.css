@@ -878,12 +878,13 @@ table.data td.actions { white-space: nowrap; }
   border-left:2px solid var(--org-line)}
 .org-branch-scroll{padding-bottom:6px}
 .org-branch-row{
-  position:relative;display:flex;flex-wrap:nowrap;justify-content:center;gap:18px}
-.org-branch-row::after{           /* the horizontal rail across the siblings */
-  content:'';position:absolute;top:0;left:0;right:0;
-  border-top:2px solid var(--org-line)}
+  position:relative;display:flex;flex-direction:column;flex-wrap:nowrap;align-items:center}
+.org-branch-item+.org-branch-item{margin-top:26px}
+.org-branch-row::after{              /* the vertical rail down the column */
+  content:'';position:absolute;top:0;bottom:0;left:50%;
+  border-left:2px solid var(--org-line)}
 .org-branch-item{
-  position:relative;display:flex;flex-direction:column;align-items:center;padding-top:34px}
+  position:relative;display:flex;flex-direction:column;align-items:center;width:min(340px,100%);padding-top:34px}
 .org-branch-item::before{          /* stub from the rail down to the card */
   content:'';position:absolute;top:0;left:50%;height:34px;
   border-left:2px solid var(--org-line)}
@@ -942,7 +943,7 @@ table.data td.actions { white-space: nowrap; }
     margin:14px 0 0 8px;padding:0 0 0 14px;border-left:2px solid var(--org-line)}
   .org-branch::before,.org-branch-row::after,.org-branch-item::before{display:none}
   .org-branch-scroll{padding-bottom:0}
-  .org-branch-row{display:flex;flex-wrap:wrap;width:100%}
+  .org-branch-row{display:flex;flex-direction:column;flex-wrap:nowrap;width:100%}
   .org-branch-item{
     display:block;padding:0 0 0 16px;margin-top:14px;
     border-left:2px solid var(--org-line)}
