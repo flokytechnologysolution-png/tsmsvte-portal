@@ -569,6 +569,58 @@ async function main() {
       ' busted=' + busted);
   } catch (e) { record('18. the whole chart fits the page width, no sideways scrolling', false, e.message); }
 
+  /* 19. live-fixture coverage: every published entry renders -------------- */
+  try {
+    const vm19 = require('vm');
+    const src19 = fs.readFileSync(path.join(ROOT, 'public', 'js', 'pages', 'org-chart.js'), 'utf8');
+    const sandbox19 = {
+      window: {},
+      document: { getElementById: function () { return null; }, querySelector: function () { return null; } },
+      App: {
+        ready: function () {},
+        esc: function (s) {
+          return String(s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+          });
+        }
+      }
+    };
+    vm19.createContext(sandbox19);
+    vm19.runInContext(src19, sandbox19);
+    const org19 = sandbox19.window && sandbox19.window.__orgChart;
+    const live = JSON.parse(fs.readFileSync(
+      path.join(ROOT, 'tools', 'fixtures', 'live-org-chart.json'), 'utf8'));
+    const entries19 = live.entries || [];
+    const layout19 = org19.buildLayout(entries19);
+    const html19 = org19.render(layout19);
+    /* Exactly one card per published entry — none dropped, none doubled. */
+    const renderedIds = {};
+    (html19.match(/data-id="[^"]*"/g) || []).forEach(function (m) {
+      const id = m.slice('data-id="'.length, m.length - 1);
+      renderedIds[id] = (renderedIds[id] || 0) + 1;
+    });
+    const missing19 = entries19.filter(function (e) { return renderedIds[e.id] !== 1; });
+    const allRendered = entries19.length === 24 && missing19.length === 0;
+    /* The Commissioner (child of the SGS, no children of her own) must still
+     * appear — a childless root-child is the classic entry to lose. */
+    const commissioner19 = entries19.filter(function (e) { return e.parent_id === 1; });
+    const commissionerOk = commissioner19.length === 1 &&
+      html19.indexOf('data-id="' + commissioner19[0].id + '"') !== -1 &&
+      html19.indexOf(sandbox19.App.esc(commissioner19[0].title)) !== -1;
+    /* Live shape: 2 roots above the chain, chain PS -> Secretary, its 11
+     * directorates on the one branch row. */
+    const railsOk = layout19.top.length === 2 &&
+      layout19.spine.map(function (n) { return n.id; }).join(',') === '3,11' &&
+      layout19.branch.length === 11;
+    record('19. every live entry renders (24 cards, Commissioner included)',
+      !!org19 && allRendered && commissionerOk && railsOk,
+      'cards=' + Object.keys(renderedIds).length +
+      ' missing=[' + missing19.map(function (e) { return e.id; }).join(',') + ']' +
+      ' commissioner=' + commissionerOk +
+      ' spine=[' + layout19.spine.map(function (n) { return n.id; }) + ']' +
+      ' branch=' + layout19.branch.length + ' top=' + layout19.top.length);
+  } catch (e) { record('19. every live entry renders (24 cards, Commissioner included)', false, e.message); }
+
   /* ---- report: close resources first, then exit NATURALLY ----------------- */
   const failed = results.filter(function (r) { return !r.pass; });
   console.log('\n' + results.length + ' tests, ' +

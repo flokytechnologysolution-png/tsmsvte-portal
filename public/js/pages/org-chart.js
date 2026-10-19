@@ -6,19 +6,21 @@
  * and draws the ministry's structure out of pure HTML + CSS (no chart
  * library, no canvas, no SVG connectors):
  *
- *   • a horizontal TOP ROW for the extra leadership roots — the Secretary to
- *     the Government and the Commissioner sit above the chain, on a rail that
- *     feeds down into it (as on the ministry's chart diagram),
- *   • a vertical CHAIN for the leadership spine (root -> ... -> last link),
- *   • a SIDE GROUP parked under the chain node it reports to — the agencies
- *     attached to a chain link, joined by a short drop onto its own rail,
- *   • one horizontal DIRECTOR ROW for the reports of the last chain node,
- *   • their SUB-UNITS hanging underneath each director card.
+ *   • a horizontal TOP ROW for the extra leadership roots — the Governor and
+ *     the Secretary to the Government sit above the chain, on a rail that
+ *     feeds down into it (as on the ministry's chart diagram); any children
+ *     they have hang underneath their card,
+ *   • a vertical CHAIN for the main reporting line (deepest root -> ... ->
+ *     last link), walked one single child at a time regardless of category,
+ *   • one horizontal DIRECTOR ROW for the reports of the last chain link,
+ *   • their SUB-UNITS hanging underneath each director card, each set on its
+ *     own horizontal rail so every units row starts at the same height.
  *
- * The shape is derived from the data, never hard-coded: the spine keeps
- * following its single continuing report while the other reports share
- * one horizontal director row (at most MAX_DIRECTORS); the node
- * where several reports lead further on feeds that row.
+ * The shape is derived from the data, never hard-coded: the chain keeps
+ * following its single continuing report while the other reports share one
+ * horizontal director row; the node where several reports lead further on
+ * feeds that row.  Every published entry appears exactly once — entries whose
+ * parent is not published are shown at the top level rather than dropped.
  *
  * Every position without an uploaded portrait shows
  * /img/placeholder-portrait.svg, and an image that fails to load falls back
@@ -44,10 +46,6 @@
     directorate: 'Directorate',
     unit_board: 'Unit & Board'
   };
-  /* How many non-leadership reports may share one horizontal director row
-   * before the row is allowed to split.  Room is reserved so new directors
-   * added from the admin console extend the row, each with its units below. */
-  var MAX_DIRECTORS = 9;
 
   function host() { return document.getElementById(HOST_ID); }
 
@@ -76,8 +74,8 @@
     }, true);
   }
 
-  /* variant: 'chain' (leadership spine, full card) | 'compact' (branch row and
-   * side group) | 'unit' (sub-unit hanging under a branch card). */
+  /* variant: 'chain' (leadership spine / top row, full card) |
+   * 'compact' (director row) | 'unit' (sub-unit under a director). */
   function cardHtml(entry, variant) {
     var p = portraitOf(entry);
     var name = String(entry.name || '').trim();
@@ -86,9 +84,9 @@
     var alt = name ? 'Portrait of ' + name : 'Portrait placeholder for ' + title;
     var cat = variant === 'chain' ? (CATEGORY_LABEL[entry.category] || '') : '';
     return '<article class="org-card org-card--' + variant +
-        (p.placeholder ? ' is-placeholder' : '') + '">' +
+        (p.placeholder ? ' is-placeholder' : '') + '" data-id="' + App.esc(entry.id) + '">' +
       '<div class="org-portrait"><img src="' + App.esc(p.src) + '" alt="' +
-        App.esc(alt) + '" loading="lazy"></div>' +
+        App.esc(alt) + '" loading="lazy" data-fallback="1"></div>' +
       '<div class="org-info">' +
         (cat ? '<span class="org-cat">' + App.esc(cat) + '</span>' : '') +
         '<h4 class="org-title">' + App.esc(title) + '</h4>' +
@@ -98,8 +96,8 @@
     '</article>';
   }
 
-  /* The sub-units hanging under a branch card. `seen` keeps a corrupted parent
-   * loop from ever recursing forever. */
+  /* The sub-units hanging under a card, each set on its own rail row. `seen`
+   * keeps a corrupted parent loop from ever recursing forever. */
   function unitsHtml(entry, childMap, seen) {
     var kids = childMap[entry.id] || [];
     if (!kids.length) return '';
@@ -113,6 +111,7 @@
       }).join('') +
     '</ul></div>';
   }
+
   function sortList(list) {
     list.sort(function (a, b) {
       return (Number(a.sort_order || 0) - Number(b.sort_order || 0)) ||
@@ -122,7 +121,12 @@
     return list;
   }
 
-  /* Turn the flat published list into { spine, side, branch, childMap }. */
+  /* Turn the flat published list into { spine, side, branch, top, childMap }.
+   * Category-agnostic: the chain follows the single continuing report from
+   * the deepest root, whatever its category; the first node with anything
+   * other than exactly one child stops the chain and feeds the director row.
+   * Extra true roots (no parent) ride ABOVE the chain; an entry whose parent
+   * id is set but not published joins the director row so it is never lost. */
   function buildLayout(entries) {
     var byId = {};
     entries.forEach(function (e) { byId[e.id] = e; });
@@ -158,72 +162,52 @@
     }
 
     /* The chain starts at the root that reaches deepest, so a stray extra
-     * top-level entry can never displace the leadership spine. */
+     * top-level entry can never displace the main reporting line. */
     var start = roots[0];
     roots.forEach(function (r) {
       if (heightOf(r) > heightOf(start)) start = r;
     });
 
     var spine = [];
-    var side = {};
     var used = {};
     var cur = start;
     while (cur && !used[cur.id]) {
       used[cur.id] = true;
       spine.push(cur);
       var kids = childMap[cur.id] || [];
-      if (!kids.length) break;
-      /* Only a LEADERSHIP child keeps the spine going down: directorates
-       * never continue it, so they all land on the same branch row. */
-      var continuing = kids.filter(function (k) {
-        return k.category === 'leadership' && (childMap[k.id] || []).length > 0;
-      });
-      if (continuing.length === 1 && (kids.length - continuing.length) <= MAX_DIRECTORS) {
-        var next = continuing[0];
-        var others = kids.filter(function (k) { return k.id !== next.id; });
-        if (others.length) side[cur.id] = others;
-        cur = next;
-        continue;
-      }
-      break; /* several reports lead on — this node feeds the branch row. */
+      if (kids.length !== 1) break;   /* several reports feed the director row */
+      cur = kids[0];
     }
 
     var branch = (childMap[cur.id] || []).slice();
-    /* Further top-level entries are never hidden. Leadership roots are lifted
-     * ABOVE the chain onto their own row (SGS and the Commissioner at the top
-     * of the diagram, feeding down into the Permanent Secretary); any other
-     * root still rides along in the branch row. */
+    /* Further top-level entries are never hidden: parentless roots are lifted
+     * ABOVE the chain onto their own rail; an entry whose parent id points at
+     * an unpublished row still rides along in the director row. */
     var top = [];
     roots.forEach(function (r) {
       if (r.id === start.id) return;
-      if (r.category === 'leadership') top.push(r);
+      if (r.parent_id === null || r.parent_id === undefined) top.push(r);
       else branch.push(r);
     });
 
-    return { spine: spine, side: side, branch: branch, top: top, childMap: childMap };
+    return { spine: spine, side: {}, branch: branch, top: top, childMap: childMap };
   }
 
   function render(layout) {
-    /* The extra leadership roots sit above the chain, on their own rail. */
+    /* The extra leadership roots sit above the chain, on their own rail,
+     * with any of their own reports hanging underneath. */
     var topHtml = '';
     if (layout.top && layout.top.length) {
       topHtml = '<div class="org-leaders"><ul class="org-leaders-row">' +
         layout.top.map(function (e) {
-          return '<li class="org-leaders-item">' + cardHtml(e, 'chain') + '</li>';
+          return '<li class="org-leaders-item">' + cardHtml(e, 'chain') +
+            unitsHtml(e, layout.childMap, {}) + '</li>';
         }).join('') +
       '</ul></div>';
     }
     var spineHtml = layout.spine.map(function (e) {
-      var group = layout.side[e.id] || [];
-      var groupHtml = group.length
-        ? '<div class="org-side-group"><ul class="org-side-list">' +
-            group.map(function (s) {
-              return '<li class="org-side-item">' + cardHtml(s, 'compact') + '</li>';
-            }).join('') +
-          '</ul></div>'
-        : '';
       return '<li class="org-spine-item"><div class="org-spine-slot">' +
-        cardHtml(e, 'chain') + groupHtml + '</div></li>';
+        cardHtml(e, 'chain') + '</div></li>';
     }).join('');
 
     var branchHtml = '';
@@ -246,9 +230,10 @@
 
   /* Fit: scale the whole tree down just enough to sit inside the homepage
    * slot — the diagram stays one clean row per level, never scrolls sideways,
-   * and re-fits on resize.  MIN_FIT stops giant charts shrinking to dust: if
-   * even that is not enough, the tree unwraps into stacked rows instead. */
-  var MIN_FIT = 0.45;
+   * and re-fits on resize.  MIN_FIT stops giant charts shrinking to dust (the
+   * live 11-director row with its unit rails needs ~0.43 at 1366px, so 0.40
+   * keeps it on one rail): below it the tree unwraps into stacked rows. */
+  var MIN_FIT = 0.40;
   function fitChart() {
     var el = host();
     if (!el || !el.querySelector) return;
@@ -281,8 +266,6 @@
     }
     window.addEventListener('load', fitChart);
   }
-  /* Nothing scrolls sideways: every row wraps in-flow to fit the page, so
-   * there is no overflow hint to manage. */
   function checkHint() { fitChart(); }
   function load() {
     show('<div class="empty-state"><strong>Loading&hellip;</strong></div>');

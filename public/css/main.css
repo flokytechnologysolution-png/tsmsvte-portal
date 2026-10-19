@@ -774,17 +774,20 @@ table.data td.actions { white-space: nowrap; }
 .service-card h3{margin:0 0 6px;color:var(--primary)}
 .service-card p{margin:0}
 
+
 /* --------------------------- organization chart ------------------------- *
  * Public homepage hierarchy (rendered by js/pages/org-chart.js), directly
  * above the Portal section.  Pure HTML + CSS connectors (no chart library):
  *
- *   chain      vertical leadership spine, links joined by a line
- *   side group hangs beside the chain link it reports to (agencies)
- *   branch     one horizontal rail under the last chain link
- *   units      hanging underneath each card on the branch, on their own rail
+ *   top       extra leadership roots (Governor, SGS) on a rail above the chain
+ *   chain     vertical spine from the deepest root down the single-child links
+ *   branch    one horizontal director row under the last chain link
+ *   units     one horizontal row per director, hanging under its card
  *
- * Colours come from the tokens set on #org-structure, so the chart follows the
- * site palette in light mode and gets its own dark palette below.
+ * At >=900px both fixed rows stay on ONE centred line (fitChart scales the
+ * tree to the container; below MIN_FIT the rows wrap instead — nothing ever
+ * scrolls sideways).  Below 900px the whole chart becomes an indented
+ * vertical list.  Colours follow the tokens on #org-structure (light + dark).
  */
 #org-structure{
   --org-card:var(--card);
@@ -797,12 +800,13 @@ table.data td.actions { white-space: nowrap; }
 }
 .org-chart{margin-top:18px;padding-bottom:4px;overflow:hidden}
 .org-tree{width:max-content;max-width:none;margin:0 auto;transform-origin:top center}
-/* fallback for giant charts: stack rows instead of shrinking past MIN_FIT */
+/* fallback for giant charts: wrap rows instead of shrinking past MIN_FIT */
 .org-tree.org-fit-wrap{width:100%;max-width:100%}
 .org-tree.org-fit-wrap .org-leaders-row,
-.org-tree.org-fit-wrap .org-side-list,
-.org-tree.org-fit-wrap .org-branch-row{flex-wrap:wrap;width:100%}
+.org-tree.org-fit-wrap .org-branch-row,
+.org-tree.org-fit-wrap .org-units{flex-wrap:wrap;width:100%}
 .org-chart ul{list-style:none;margin:0;padding:0}
+/* ------------------------------ chain spine ---------------------------- */
 .org-spine{display:flex;flex-direction:column;align-items:center}
 .org-spine-item{position:relative;display:flex;justify-content:center}
 .org-spine-item+.org-spine-item{margin-top:30px}
@@ -812,47 +816,71 @@ table.data td.actions { white-space: nowrap; }
   border-left:2px solid var(--org-line)}
 .org-spine-slot{position:relative;display:block;width:100%}
 .org-spine-slot>.org-card--chain{margin:0 auto}
-/* side group: a wrapping row UNDER its chain link, one short drop joining it */
-.org-side-group{position:relative;width:100%;margin-top:30px}
-.org-side-group::before{
-  content:'';position:absolute;top:-30px;left:50%;height:30px;
-  border-left:2px solid var(--org-line)}
-.org-side-list{
-  position:relative;display:flex;flex-wrap:nowrap;justify-content:center;
-  gap:18px;padding-top:34px}
-.org-side-list::after{             /* the horizontal rail across the row */
-  content:'';position:absolute;top:0;left:0;right:0;
-  border-top:2px solid var(--org-line)}
-.org-side-item{position:relative}
-.org-side-item::before{            /* stub from the rail down to each card */
-  content:'';position:absolute;top:-34px;left:50%;height:34px;
-  border-left:2px solid var(--org-line)}
 /* ---------------------- leadership top row ------------------------------ */
-/* Extra leadership roots (SGS, the Commissioner) sit ABOVE the chain, on a
- * rail of their own that drops down into the Permanent Secretary — the order
- * of the ministry's chart diagram. Hidden connectors on small screens. */
+/* Extra leadership roots (the Governor and the SGS) sit ABOVE the chain, on
+ * a rail of their own that drops down into it — the order of the ministry's
+ * chart diagram.  Any children they have hang underneath as unit rows. */
 .org-leaders{position:relative;padding-bottom:30px;max-width:100%}
 .org-leaders-row{
   position:relative;width:max-content;max-width:none;margin:0 auto;
-  display:flex;flex-wrap:nowrap;justify-content:center;gap:18px;padding-bottom:34px}
-.org-leaders-row::after{            /* the horizontal rail across the leaders */
+  display:flex;flex-wrap:nowrap;justify-content:center;align-items:flex-start;
+  gap:18px;padding-bottom:34px}
+.org-leaders-row::after{             /* the horizontal rail across the leaders */
   content:'';position:absolute;bottom:0;left:0;right:0;
   border-top:2px solid var(--org-line)}
-.org-leaders-item{position:relative}
-.org-leaders-item::after{           /* stub from each card down to the rail */
+.org-leaders-item{position:relative;display:flex;flex-direction:column;align-items:center}
+.org-leaders-item::after{            /* stub from each item down to the rail */
   content:'';position:absolute;top:100%;left:50%;height:34px;
   border-left:2px solid var(--org-line)}
-.org-leaders::before{               /* drop from the rail centre into the chain */
+.org-leaders::before{                /* drop from the rail centre into the chain */
   content:'';position:absolute;bottom:0;left:50%;height:30px;
   border-left:2px solid var(--org-line)}
-/* ------------------------------ cards --------------------------------- */
+/* --------------------------- director row ------------------------------- */
+/* The reports of the last chain link share ONE horizontal row on a rail. */
+.org-branch{position:relative;padding-top:34px;margin-top:2px}
+.org-branch::before{                 /* drop from the last chain link to the rail */
+  content:'';position:absolute;top:0;left:50%;height:34px;
+  border-left:2px solid var(--org-line)}
+.org-branch-row{
+  position:relative;display:flex;flex-wrap:nowrap;justify-content:center;
+  align-items:flex-start;gap:14px}
+.org-branch-row::after{              /* the horizontal rail across the row */
+  content:'';position:absolute;top:0;left:0;right:0;
+  border-top:2px solid var(--org-line)}
+.org-branch-item{
+  position:relative;display:flex;flex-direction:column;align-items:center;
+  width:max-content;max-width:100%;padding-top:34px}
+.org-branch-item::before{            /* stub from the rail down to the card */
+  content:'';position:absolute;top:0;left:50%;height:34px;
+  border-left:2px solid var(--org-line)}
+/* ------------------------------ units ---------------------------------- */
+/* Each director's units hang under its card on their own rail; every unit
+ * card is a fixed 150px+ column so the row below the directors lines up. */
+.org-drop{position:relative;width:100%;margin-top:18px}
+.org-drop::before{                   /* down from the card's centre to the rail */
+  content:'';position:absolute;top:-18px;left:50%;height:18px;
+  border-left:2px solid var(--org-line)}
+.org-units{
+  position:relative;display:flex;flex-wrap:nowrap;justify-content:center;
+  align-items:flex-start;gap:14px;padding-top:24px}
+.org-units::after{                   /* the horizontal rail across the units */
+  content:'';position:absolute;top:0;left:0;right:0;
+  border-top:2px solid var(--org-line)}
+.org-unit{position:relative;min-width:150px}
+.org-unit::before{                   /* stub from the rail down to the card */
+  content:'';position:absolute;top:-24px;left:50%;height:24px;
+  border-left:2px solid var(--org-line)}
+/* ------------------------------ cards ---------------------------------- */
 .org-card{
   background:var(--org-card);border:1px solid var(--org-line);border-radius:12px;
   box-shadow:var(--shadow-sm);padding:16px 18px;text-align:center;
   display:flex;flex-direction:column;align-items:center}
 .org-card--chain{width:min(300px,100%)}
-.org-card--compact{width:170px;padding:12px 12px}
-.org-card--unit{width:100%;padding:10px 12px}
+/* Fixed-height director cards so every units row below them starts at the
+ * SAME y-offset across the whole branch row. */
+.org-card--compact{
+  width:170px;min-width:150px;padding:12px;height:280px;overflow:hidden}
+.org-card--unit{width:150px;min-width:150px;padding:10px 12px}
 .org-portrait img{
   width:104px;height:128px;object-fit:cover;border-radius:10px;display:block;
   margin:0 auto 10px;border:2px solid var(--org-accent);background:var(--org-tint)}
@@ -862,48 +890,18 @@ table.data td.actions { white-space: nowrap; }
   display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
   text-transform:uppercase;color:var(--org-em);margin-bottom:4px}
 .org-card .org-title{margin:0 0 4px;font-size:17px;line-height:1.3;color:var(--org-ink)}
-.org-card--compact .org-title{font-size:14.5px}
+.org-card--compact .org-title{font-size:14.5px;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .org-card--unit .org-title{font-size:13.5px;margin-bottom:2px}
 .org-card .org-name{margin:0;font-weight:600;font-size:14.5px;color:var(--org-em);
   overflow-wrap:anywhere}
 .org-card--compact .org-name,.org-card--unit .org-name{font-size:13.5px}
 .org-card .org-desc{margin:8px 0 0;font-size:13.5px;color:var(--org-muted);text-align:left;
   overflow-wrap:anywhere}
+.org-card--compact .org-desc{
+  display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
 .org-card--unit .org-desc{display:none}
-/* ------------------------------ branch --------------------------------- */
-/* the drop from the last chain link down to the rail, then the rail itself */
-.org-branch{position:relative;padding-top:34px;margin-top:2px}
-.org-branch::before{
-  content:'';position:absolute;top:0;left:50%;height:34px;
-  border-left:2px solid var(--org-line)}
-.org-branch-scroll{padding-bottom:6px}
-.org-branch-row{
-  position:relative;display:flex;flex-wrap:nowrap;justify-content:center;gap:14px}
-.org-branch-row::after{              /* the horizontal rail across the row */
-  content:'';position:absolute;top:0;left:0;right:0;
-  border-top:2px solid var(--org-line)}
-.org-branch-item{
-  position:relative;display:flex;flex-direction:column;align-items:center;width:min(215px,100%);padding-top:34px}
-.org-branch-item::before{          /* stub from the rail down to the card */
-  content:'';position:absolute;top:0;left:50%;height:34px;
-  border-left:2px solid var(--org-line)}
-/* ------------------------------ units --------------------------------- */
-.org-drop{position:relative;width:100%;margin-top:20px}
-/* elbow: down from the card's centre, then across to the units rail */
-.org-drop::before{
-  content:'';position:absolute;top:-20px;left:50%;height:20px;
-  border-left:2px solid var(--org-line)}
-.org-drop::after{
-  content:'';position:absolute;top:-20px;left:-20px;width:calc(50% + 20px);
-  border-top:2px solid var(--org-line)}
-.org-units{margin:0;padding:0 0 0 18px;border-left:2px solid var(--org-line);
-  list-style:none;width:100%}
-.org-unit{position:relative;margin-top:12px}
-.org-unit:first-child{margin-top:0}
-.org-unit::before{                 /* tick from the rail to the unit card */
-  content:'';position:absolute;left:-20px;top:26px;width:16px;
-  border-top:2px solid var(--org-line)}
-/* ---------------------------- dark mode -------------------------------- */
+/* ------------------------------ dark mode ------------------------------ */
 @media (prefers-color-scheme:dark){
   #org-structure{
     --org-card:#17241d;--org-line:#33463c;--org-ink:#e9f1ec;--org-muted:#a2b4aa;
@@ -925,15 +923,13 @@ table.data td.actions { white-space: nowrap; }
   .org-spine-item+.org-spine-item{margin-top:14px}
   .org-spine-item:not(:last-child)::after{display:none}
   .org-card,.org-card--chain,.org-card--compact,.org-card--unit{
-    width:100%;max-width:none;margin:0;text-align:left;align-items:flex-start}
+    width:100%;max-width:none;min-width:0;height:auto;margin:0;
+    text-align:left;align-items:flex-start}
+  .org-card .org-title,.org-card--compact .org-title{
+    display:block;-webkit-line-clamp:none;overflow:visible}
+  .org-card--compact .org-desc{display:block;-webkit-line-clamp:none;overflow:visible}
   .org-portrait img,.org-card--compact .org-portrait img,.org-card--unit .org-portrait img{
     margin:0 0 10px}
-  .org-card .org-desc{display:block}
-  .org-side-group{margin-top:14px}
-  .org-side-group::before{top:-14px;height:14px}
-  .org-side-list{width:100%;flex-wrap:wrap;gap:12px;padding-top:14px}
-  .org-side-list::after{display:block}
-  .org-side-item::before{top:-14px;height:14px}
   .org-leaders{padding-bottom:14px}
   .org-leaders-row{display:flex;flex-wrap:wrap;width:100%;padding-bottom:14px}
   .org-leaders-row::after,.org-leaders-item::after,.org-leaders::before{display:none}
@@ -941,22 +937,22 @@ table.data td.actions { white-space: nowrap; }
   .org-branch{
     margin:14px 0 0 8px;padding:0 0 0 14px;border-left:2px solid var(--org-line)}
   .org-branch::before,.org-branch-row::after,.org-branch-item::before{display:none}
-  .org-branch-scroll{padding-bottom:0}
-  .org-branch-row{display:flex;flex-wrap:wrap;width:100%}
+  .org-branch-row{display:flex;flex-wrap:wrap;width:100%;gap:0}
   .org-branch-item{
-    display:block;padding:0 0 0 16px;margin-top:14px;
+    display:block;width:100%;padding:0 0 0 16px;margin-top:14px;
     border-left:2px solid var(--org-line)}
   .org-branch-item::before{
-    display:block;top:24px;left:-16px;width:12px;height:0;
-    border-left:0;border-top:2px solid var(--org-line)}
+    content:'';display:block;position:absolute;top:24px;left:-16px;
+    width:12px;height:0;border-left:0;border-top:2px solid var(--org-line)}
   .org-branch-item:first-child{margin-top:6px}
   .org-drop{margin-top:14px;margin-left:6px}
   .org-drop::before,.org-drop::after,.org-unit::before{display:none}
-  .org-units{border-left:2px solid var(--org-line);padding-left:14px;margin-top:8px;
-    padding-top:0}
-  .org-unit{margin-top:10px;padding-left:0}
+  .org-units{
+    display:block;border-left:2px solid var(--org-line);
+    padding:0 0 0 14px;margin-top:8px}
+  .org-units::after{display:none}
+  .org-unit{margin-top:10px;padding-left:0;min-width:0}
 }
-
 
 /* ---------------------- admin: organization chart rows ------------------ *
  * Each position is one row in its own picture slot, name/manager/publish

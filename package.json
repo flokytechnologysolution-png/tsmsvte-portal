@@ -38,5 +38,8 @@
   "allowScripts": {
     "bcrypt@6.0.0": true,
     "better-sqlite3@12.11.1": true
+  },
+  "devDependencies": {
+    "playwright": "^1.64.1"
   }
 }

@@ -1,0 +1,245 @@
+{
+  "entries": [
+    {
+      "id": 5,
+      "parent_id": 11,
+      "title": "Director of Vocational and Technical Education",
+      "name": "",
+      "category": "directorate",
+      "description": "Leads the supervision of technical colleges, vocational centres and skills programmes across the state.",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 6,
+      "parent_id": 11,
+      "title": "Director of Planning, Research and Statistics",
+      "name": "",
+      "category": "directorate",
+      "description": "Coordinates planning, data collection, research and statistical reporting for the ministry.",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 11,
+      "parent_id": 3,
+      "title": "Secretary",
+      "name": "",
+      "category": "directorate",
+      "description": "Provides secretarial and records support to the Permanent Secretary and the ministry's management.",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 13,
+      "parent_id": 11,
+      "title": "Director Quality Assurance",
+      "name": "",
+      "category": "directorate",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 14,
+      "parent_id": 11,
+      "title": "Director ICT",
+      "name": "",
+      "category": "directorate",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 15,
+      "parent_id": 11,
+      "title": "Admin",
+      "name": "",
+      "category": "directorate",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 16,
+      "parent_id": 11,
+      "title": "Director Finance",
+      "name": "",
+      "category": "directorate",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 17,
+      "parent_id": 11,
+      "title": "Store Officer",
+      "name": "",
+      "category": "directorate",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 18,
+      "parent_id": 11,
+      "title": "Director Education Resource Center",
+      "name": "",
+      "category": "directorate",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 19,
+      "parent_id": 11,
+      "title": "Director Guidance & Counseling",
+      "name": "",
+      "category": "directorate",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 20,
+      "parent_id": 13,
+      "title": "Monitoring & Evaluation Unit",
+      "name": "",
+      "category": "unit_board",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 21,
+      "parent_id": 13,
+      "title": "School Inspection Unit",
+      "name": "",
+      "category": "unit_board",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 22,
+      "parent_id": 6,
+      "title": "EMIS Unit",
+      "name": "",
+      "category": "unit_board",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 23,
+      "parent_id": 6,
+      "title": "Planing Unit",
+      "name": "",
+      "category": "unit_board",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 24,
+      "parent_id": 6,
+      "title": "Desk Officer Private Shools",
+      "name": "",
+      "category": "unit_board",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 25,
+      "parent_id": 15,
+      "title": "Staff Officer",
+      "name": "",
+      "category": "unit_board",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 26,
+      "parent_id": 15,
+      "title": "Clerical Staff",
+      "name": "",
+      "category": "unit_board",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 27,
+      "parent_id": 16,
+      "title": "Revenue Unit",
+      "name": "",
+      "category": "unit_board",
+      "description": "",
+      "portrait": "",
+      "sort_order": 0
+    },
+    {
+      "id": 28,
+      "parent_id": null,
+      "title": "Executive Governor of Taraba State",
+      "name": "His Excellency, Dr. Agbu Kefas",
+      "category": "leadership",
+      "description": "",
+      "portrait": "/files/4623f55549708a7ec0336375",
+      "sort_order": 0
+    },
+    {
+      "id": 1,
+      "parent_id": null,
+      "title": "The Secretary to the Government of Taraba State (SGS)",
+      "name": "Chief Barr. Gebon Timothy Kataps Ngwii",
+      "category": "leadership",
+      "description": "Secretary to the Government of Taraba State (SGS) is indeed a political panacea and a true democrats.",
+      "portrait": "/files/9005ba8090e03e6fca5a16f1",
+      "sort_order": 1
+    },
+    {
+      "id": 4,
+      "parent_id": 11,
+      "title": "Director of Administration",
+      "name": "",
+      "category": "directorate",
+      "description": "Oversees personnel, general administration and internal services of the ministry.",
+      "portrait": "",
+      "sort_order": 1
+    },
+    {
+      "id": 2,
+      "parent_id": 1,
+      "title": "commissioner",
+      "name": "Dr. Augustina Godwin",
+      "category": "leadership",
+      "description": "Honourable Commissioner of Secondary Education, Dr Augustina Godwin. Thank you for all you do for the education sector",
+      "portrait": "/files/90f2d7622b5162b5e8df671a",
+      "sort_order": 2
+    },
+    {
+      "id": 12,
+      "parent_id": 11,
+      "title": "Director Secondary Education",
+      "name": "",
+      "category": "directorate",
+      "description": "",
+      "portrait": "",
+      "sort_order": 2
+    },
+    {
+      "id": 3,
+      "parent_id": null,
+      "title": "The Permanent Secretary, Taraba State Ministry of Secondary, Technical and Vocational Education",
+      "name": "Alhaji Idris Abubakar Goje",
+      "category": "leadership",
+      "description": "Alhaji Idris Abubakar Goje was named among the top permanent secretaries in Nigeria by the Nigeria Leadership Awards.",
+      "portrait": "/files/523f8ea6759fbacd3134c87b",
+      "sort_order": 3
+    }
+  ],
+  "total": 24
+}
