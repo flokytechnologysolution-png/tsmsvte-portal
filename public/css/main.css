@@ -917,7 +917,7 @@ table.data td.actions { white-space: nowrap; }
   #org-structure .empty-state strong{color:var(--org-ink)}
 }
 /* --------------- tablet / mobile: indented vertical list ---------------- */
-@media (max-width:1000px){
+@media (max-width:899px){
   .org-chart{overflow-x:hidden;padding-bottom:0}
   .org-tree{width:100%}
   .org-spine{display:block;width:100%}

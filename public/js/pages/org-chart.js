@@ -257,7 +257,7 @@
     tree.classList.remove('org-fit-wrap');
     tree.style.transform = '';
     tree.style.marginBottom = '';
-    if (window.innerWidth <= 1000) return;   /* mobile stacks by design */
+    if (window.innerWidth < 900) return;   /* narrow screens stack by design */
     var avail = el.clientWidth;
     var need = tree.scrollWidth;
     if (!avail || !need || need <= avail + 1) return;

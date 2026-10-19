@@ -349,7 +349,7 @@ async function main() {
     const html = page.text;
     const sections = html.split('id="org-structure"').length - 1;
     const hosts = html.split('id="org-chart"').length - 1;
-    const loadsRenderer = html.indexOf('<script src="/js/pages/org-chart.js">') !== -1;
+    const loadsRenderer = html.indexOf('/js/pages/org-chart.js') !== -1;
     const loadsHome = html.indexOf('<script src="/js/pages/home.js">') !== -1;
     const loadsClean = html.indexOf('<script src="/js/pages/home-clean.js">') !== -1;
     const placeholdersGone = html.indexOf('[Name Placeholder]') === -1;
@@ -541,16 +541,32 @@ async function main() {
       htmlSrc.indexOf('org-branch-scroll') === -1 &&
       htmlSrc.indexOf('org-scroll-hint') === -1 &&
       vocPos !== -1 && headPos > vocPos && planPos > headPos;
-    /* Both fixed rows stay on ONE line (JS scales them with fitChart); only
-     * the emergency fallback unwraps, and sideways overflow is clipped
-     * inside the homepage slot. */
+    /* Both fixed rows stay on ONE line at 900px and above (JS scales them
+     * with fitChart); the vertical stack only kicks in below 900px, and
+     * sideways overflow is clipped inside the homepage slot. */
     const oneLineOk = /\.org-leaders-row\{[^}]*flex-wrap:\s*nowrap/.test(css) &&
       /\.org-branch-row\{[^}]*flex-wrap:\s*nowrap/.test(css) &&
       /\.org-branch-row\{[^}]*justify-content:\s*center/.test(css) &&
       css.indexOf('.org-scroll-hint') === -1;
+    /* The mobile collapse must NOT steal desktop widths: 900px+ keeps the
+     * horizontal row, only <900px stacks vertically. Scan every @media rule
+     * (earlier rules like 1160px/640px exist) and take the one guarding the
+     * org branch row. */
+    const stackBelow900 = (function () {
+      const blocks = css.match(/@media\s*\(\s*max-width\s*:\s*(\d+)px\s*\)\s*\{[\s\S]*?\.org-branch-row/g) || [];
+      return blocks.some(function (b) { return Number(b.match(/(\d+)px/)[1]) === 899; });
+    })();
+    /* Narrow-screen JS guard must match: fitChart scales at >=900px. */
+    const jsScalesAt900 = src18.indexOf('window.innerWidth < 900') !== -1;
+    /* Cache-busters force browsers past stale CSS/JS after deploys. */
+    const home = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
+    const busted = home.indexOf('/css/main.css?v=') !== -1 &&
+      home.indexOf('/js/pages/org-chart.js?v=') !== -1;
     record('18. the whole chart fits the page width, no sideways scrolling',
-      directorsOnOneRow && oneLineOk,
-      'oneRow=' + directorsOnOneRow + ' oneLine=' + oneLineOk);
+      directorsOnOneRow && oneLineOk && stackBelow900 && jsScalesAt900 && busted,
+      'oneRow=' + directorsOnOneRow + ' oneLine=' + oneLineOk +
+      ' stackBelow900=' + stackBelow900 + ' js900=' + jsScalesAt900 +
+      ' busted=' + busted);
   } catch (e) { record('18. the whole chart fits the page width, no sideways scrolling', false, e.message); }
 
   /* ---- report: close resources first, then exit NATURALLY ----------------- */
