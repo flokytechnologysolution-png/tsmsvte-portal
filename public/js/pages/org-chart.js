@@ -12,13 +12,13 @@
  *   • a vertical CHAIN for the leadership spine (root -> ... -> last link),
  *   • a SIDE GROUP parked under the chain node it reports to — the agencies
  *     attached to a chain link, joined by a short drop onto its own rail,
- *   • one vertical DIRECTOR COLUMN for the reports of the last chain node,
+ *   • one horizontal DIRECTOR ROW for the reports of the last chain node,
  *   • their SUB-UNITS hanging underneath each director card.
  *
  * The shape is derived from the data, never hard-coded: the spine keeps
- * following its single continuing report while the other reports stack in
- * it (at most MAX_DIRECTORS) in one vertical director column; the node
- * where several reports lead further on feeds that column.
+ * following its single continuing report while the other reports share
+ * one horizontal director row (at most MAX_DIRECTORS); the node
+ * where several reports lead further on feeds that row.
  *
  * Every position without an uploaded portrait shows
  * /img/placeholder-portrait.svg, and an image that fails to load falls back
@@ -44,9 +44,9 @@
     directorate: 'Directorate',
     unit_board: 'Unit & Board'
   };
-  /* How many non-leadership reports may share one vertical director column
-   * before the column is allowed to split.  Room is reserved so new directors
-   * added from the admin console stack underneath, never sideways. */
+  /* How many non-leadership reports may share one horizontal director row
+   * before the row is allowed to split.  Room is reserved so new directors
+   * added from the admin console extend the row, each with its units below. */
   var MAX_DIRECTORS = 9;
 
   function host() { return document.getElementById(HOST_ID); }

@@ -528,21 +528,25 @@ async function main() {
       E18(9, 3, 'Store Keeper', 'directorate', 4),
       E18(10, 3, 'Director of Extra Duties', 'directorate', 5)
     ]);
-    /* All six directors share ONE vertical column; nothing is parked beside
-     * the chain and no sideways-scroll markup is rendered. */
+    /* All six directors share ONE horizontal row in admin order; nothing is
+     * parked beside the chain and no sideways-scroll markup is rendered. */
     const htmlSrc = org18.render(layout18);
+    const headPos = htmlSrc.indexOf('Head, Vocational Studies');
+    const vocPos = htmlSrc.indexOf('Director of Vocational');
+    const planPos = htmlSrc.indexOf('Director of Planning');
     const directorsOnOneRow = layout18 &&
       layout18.branch.map(function (e) { return e.id; }).join(',') === '4,5,6,8,9,10' &&
       Object.keys(layout18.side).length === 0 &&
       htmlSrc.split('org-branch-item').length - 1 === 6 &&
       htmlSrc.indexOf('org-branch-scroll') === -1 &&
-      htmlSrc.indexOf('org-scroll-hint') === -1;
-    /* The leaders row stays on ONE line (JS scales it with fitChart) while
-     * the directors stack in one vertical column; sideways overflow is
-     * clipped inside the homepage slot. */
+      htmlSrc.indexOf('org-scroll-hint') === -1 &&
+      vocPos !== -1 && headPos > vocPos && planPos > headPos;
+    /* Both fixed rows stay on ONE line (JS scales them with fitChart); only
+     * the emergency fallback unwraps, and sideways overflow is clipped
+     * inside the homepage slot. */
     const oneLineOk = /\.org-leaders-row\{[^}]*flex-wrap:\s*nowrap/.test(css) &&
-      /\.org-branch-row\{[^}]*flex-direction:\s*column/.test(css) &&
-      /\.org-branch-row\{[^}]*align-items:\s*center/.test(css) &&
+      /\.org-branch-row\{[^}]*flex-wrap:\s*nowrap/.test(css) &&
+      /\.org-branch-row\{[^}]*justify-content:\s*center/.test(css) &&
       css.indexOf('.org-scroll-hint') === -1;
     record('18. the whole chart fits the page width, no sideways scrolling',
       directorsOnOneRow && oneLineOk,
