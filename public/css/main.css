@@ -784,10 +784,12 @@ table.data td.actions { white-space: nowrap; }
  *   branch    one horizontal director row under the last chain link
  *   units     one horizontal row per director, hanging under its card
  *
- * At >=900px both fixed rows stay on ONE centred line (fitChart scales the
- * tree to the container; below MIN_FIT the rows wrap instead — nothing ever
- * scrolls sideways).  Below 900px the whole chart becomes an indented
- * vertical list.  Colours follow the tokens on #org-structure (light + dark).
+ * At >=900px both fixed rows stay on ONE centred line at FULL card size —
+ * when the rails are wider than the homepage slot the chart scrolls sideways
+ * inside its own frame (.org-scroll) with a hint and prev/next buttons; the
+ * page itself never scrolls sideways.  Below 900px the whole chart becomes
+ * an indented vertical list.  Colours follow the tokens on #org-structure
+ * (light + dark).
  */
 #org-structure{
   --org-card:var(--card);
@@ -798,13 +800,20 @@ table.data td.actions { white-space: nowrap; }
   --org-em:#0b4d2a;
   --org-accent:var(--accent,#f2b705);
 }
-.org-chart{margin-top:18px;padding-bottom:4px;overflow:hidden}
-.org-tree{width:max-content;max-width:none;margin:0 auto;transform-origin:top center}
-/* fallback for giant charts: wrap rows instead of shrinking past MIN_FIT */
-.org-tree.org-fit-wrap{width:100%;max-width:100%}
-.org-tree.org-fit-wrap .org-leaders-row,
-.org-tree.org-fit-wrap .org-branch-row,
-.org-tree.org-fit-wrap .org-units{flex-wrap:wrap;width:100%}
+.org-chart{margin-top:18px;padding-bottom:4px}
+/* Full-size cards always: when the rails are wider than the homepage slot
+ * the chart scrolls sideways INSIDE this frame — the page never does. */
+.org-scroll{overflow-x:auto;overflow-y:hidden;scroll-behavior:smooth;
+  -webkit-overflow-scrolling:touch;padding-bottom:8px}
+.org-tree{width:max-content;max-width:none;margin:0 auto}
+.org-scroll-bar{display:flex;align-items:center;justify-content:center;gap:10px;
+  margin:10px auto 0;color:var(--org-muted);font-size:13px}
+.org-scroll-bar[hidden]{display:none}
+.org-scroll-btn{width:34px;height:34px;border:1px solid var(--org-line);
+  border-radius:50%;background:var(--org-card);color:var(--org-em);font-size:16px;
+  line-height:1;cursor:pointer;box-shadow:var(--shadow-sm)}
+.org-scroll-btn:hover{border-color:var(--org-em)}
+.org-scroll-btn:disabled{opacity:.35;cursor:default;box-shadow:none}
 .org-chart ul{list-style:none;margin:0;padding:0}
 /* ------------------------------ chain spine ---------------------------- */
 .org-spine{display:flex;flex-direction:column;align-items:center}
@@ -918,6 +927,7 @@ table.data td.actions { white-space: nowrap; }
 @media (max-width:899px){
   .org-chart{overflow-x:hidden;padding-bottom:0}
   .org-tree{width:100%}
+  .org-scroll{overflow:visible;padding-bottom:0}
   .org-spine{display:block;width:100%}
   .org-spine-item,.org-spine-slot{display:block;width:100%}
   .org-spine-item+.org-spine-item{margin-top:14px}

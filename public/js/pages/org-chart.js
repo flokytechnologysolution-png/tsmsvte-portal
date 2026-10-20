@@ -222,51 +222,56 @@
       '</div>';
     }
 
-    return '<div class="org-tree">' + topHtml +
+    return '<div class="org-scroll"><div class="org-tree">' + topHtml +
       '<ul class="org-spine">' + spineHtml + '</ul>' +
       branchHtml +
+    '</div></div>' +
+    '<div class="org-scroll-bar" hidden>' +
+      '<button type="button" class="org-scroll-btn org-scroll-btn--prev" ' +
+        'aria-label="Scroll the chart to the left">&larr;</button>' +
+      '<span class="org-scroll-hint">Scroll to see all departments</span>' +
+      '<button type="button" class="org-scroll-btn org-scroll-btn--next" ' +
+        'aria-label="Scroll the chart to the right">&rarr;</button>' +
     '</div>';
   }
 
-  /* Fit: scale the whole tree down just enough to sit inside the homepage
-   * slot — the diagram stays one clean row per level, never scrolls sideways,
-   * and re-fits on resize.  MIN_FIT stops giant charts shrinking to dust (the
-   * live 11-director row with its unit rails needs ~0.43 at 1366px, so 0.40
-   * keeps it on one rail): below it the tree unwraps into stacked rows. */
-  var MIN_FIT = 0.40;
-  function fitChart() {
+  /* The rails keep FULL card sizes — never scaled to dust.  When the chart
+   * is wider than the homepage slot it scrolls sideways INSIDE its own frame,
+   * with a hint and prev/next buttons; the page itself never scrolls
+   * sideways.  The bar only appears when the tree really overflows (the
+   * stacked layout below 900px never needs it). */
+  function wireScroll() {
     var el = host();
     if (!el || !el.querySelector) return;
-    var tree = el.querySelector('.org-tree');
-    if (!tree) return;
-    tree.classList.remove('org-fit-wrap');
-    tree.style.transform = '';
-    tree.style.marginBottom = '';
-    if (window.innerWidth < 900) return;   /* narrow screens stack by design */
-    var avail = el.clientWidth;
-    var need = tree.scrollWidth;
-    if (!avail || !need || need <= avail + 1) return;
-    var scale = avail / need;
-    if (scale < MIN_FIT) { tree.classList.add('org-fit-wrap'); return; }
-    tree.style.transform = 'scale(' + scale + ')';
-    /* A CSS scale does not shrink layout height — pull the gap closed. */
-    var h = tree.offsetHeight;
-    if (h) tree.style.marginBottom = '-' + Math.round(h * (1 - scale)) + 'px';
-  }
-  function wireFit() {
-    if (window.__orgFitWired) return;
-    window.__orgFitWired = true;
-    var t = null;
-    window.addEventListener('resize', function () {
-      if (t) window.clearTimeout(t);
-      t = window.setTimeout(fitChart, 120);
-    });
-    if (document && document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(function () { fitChart(); });
+    var scroller = el.querySelector('.org-scroll');
+    var bar = el.querySelector('.org-scroll-bar');
+    if (!scroller || !bar) return;
+    var prev = bar.querySelector('.org-scroll-btn--prev');
+    var next = bar.querySelector('.org-scroll-btn--next');
+    function update() {
+      if (window.innerWidth < 900) { bar.hidden = true; return; }
+      var over = scroller.scrollWidth - scroller.clientWidth > 1;
+      bar.hidden = !over;
+      if (!over) return;
+      prev.disabled = scroller.scrollLeft <= 1;
+      next.disabled = scroller.scrollLeft >= scroller.scrollWidth - scroller.clientWidth - 1;
     }
-    window.addEventListener('load', fitChart);
+    function step(dir) {
+      var by = Math.max(240, Math.round(scroller.clientWidth * 0.6));
+      if (scroller.scrollBy) scroller.scrollBy({ left: dir * by, behavior: 'smooth' });
+      else scroller.scrollLeft += dir * by;
+    }
+    if (!el.__orgScrollWired) {
+      el.__orgScrollWired = true;
+      if (prev && next) {
+        prev.addEventListener('click', function () { step(-1); });
+        next.addEventListener('click', function () { step(1); });
+      }
+      scroller.addEventListener('scroll', update, { passive: true });
+      window.addEventListener('resize', update);
+    }
+    update();
   }
-  function checkHint() { fitChart(); }
   function load() {
     show('<div class="empty-state"><strong>Loading&hellip;</strong></div>');
     wireFallback(host());
@@ -279,17 +284,17 @@
         return;
       }
       show(render(layout));
-      checkHint();
+      wireScroll();
     }).catch(function () {
       show('<div class="empty-state"><strong>Organization chart is temporarily unavailable.</strong> ' +
         'Please refresh the page in a moment.</div>');
     });
   }
 
-  App.ready(function () { wireFit(); load(); });
+  App.ready(function () { load(); });
 
   /* Exposed for tools/test-org-chart.js (it runs this file in a sandbox with a
    * stubbed window/App); the page's own behaviour is unchanged. */
-  window.__orgChart = { buildLayout: buildLayout, render: render, cardHtml: cardHtml, fitChart: fitChart };
+  window.__orgChart = { buildLayout: buildLayout, render: render, cardHtml: cardHtml, wireScroll: wireScroll };
 
 })();

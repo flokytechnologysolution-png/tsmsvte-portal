@@ -499,7 +499,7 @@ async function main() {
       (html.split('org-card--chain').length - 1));
   } catch (e) { record('17. leadership roots render above the chain, the rest in place', false, e.message); }
 
-  /* 18. fit-to-page: no sideways scrolling anywhere ------------------------ */
+  /* 18. full-size cards in a sideways-scrolling frame; page never scrolls --- */
   try {
     const vm18 = require('vm');
     const src18 = fs.readFileSync(path.join(ROOT, 'public', 'js', 'pages', 'org-chart.js'), 'utf8');
@@ -529,7 +529,7 @@ async function main() {
       E18(10, 3, 'Director of Extra Duties', 'directorate', 5)
     ]);
     /* All six directors share ONE horizontal row in admin order; nothing is
-     * parked beside the chain and no sideways-scroll markup is rendered. */
+     * parked beside the chain. */
     const htmlSrc = org18.render(layout18);
     const headPos = htmlSrc.indexOf('Head, Vocational Studies');
     const vocPos = htmlSrc.indexOf('Director of Vocational');
@@ -538,16 +538,28 @@ async function main() {
       layout18.branch.map(function (e) { return e.id; }).join(',') === '4,5,6,8,9,10' &&
       Object.keys(layout18.side).length === 0 &&
       htmlSrc.split('org-branch-item').length - 1 === 6 &&
-      htmlSrc.indexOf('org-branch-scroll') === -1 &&
-      htmlSrc.indexOf('org-scroll-hint') === -1 &&
       vocPos !== -1 && headPos > vocPos && planPos > headPos;
-    /* Both fixed rows stay on ONE line at 900px and above (JS scales them
-     * with fitChart); the vertical stack only kicks in below 900px, and
-     * sideways overflow is clipped inside the homepage slot. */
+    /* FULL SIZE is a hard rule: 170px director cards, 150px unit cards in CSS,
+     * and the renderer must contain no scale-to-fit code (MIN_FIT, transform
+     * scaling) at all. */
+    const fullSizeOk = /\.org-card--compact\{[^}]*width:\s*170px/.test(css) &&
+      /\.org-card--unit\{[^}]*width:\s*150px/.test(css) &&
+      src18.indexOf('MIN_FIT') === -1 &&
+      src18.indexOf('tree.style.transform') === -1 &&
+      src18.indexOf('org-fit-wrap') === -1;
+    /* Both fixed rows stay on ONE line at 900px+ (they live in a wrapper that
+     * scrolls sideways when too wide); the vertical stack only kicks in below
+     * 900px. */
     const oneLineOk = /\.org-leaders-row\{[^}]*flex-wrap:\s*nowrap/.test(css) &&
       /\.org-branch-row\{[^}]*flex-wrap:\s*nowrap/.test(css) &&
-      /\.org-branch-row\{[^}]*justify-content:\s*center/.test(css) &&
-      css.indexOf('.org-scroll-hint') === -1;
+      /\.org-branch-row\{[^}]*justify-content:\s*center/.test(css);
+    /* The overflow must live INSIDE the chart frame (overflow-x:auto) and the
+     * markup must ship the scroll hint + prev/next controls. */
+    const scrollFrameOk = /\.org-scroll\{[^}]*overflow-x:\s*auto/.test(css) &&
+      htmlSrc.indexOf('class="org-scroll"') !== -1 &&
+      htmlSrc.indexOf('org-scroll-hint') !== -1 &&
+      (htmlSrc.match(/org-scroll-btn--/g) || []).length === 2 &&
+      htmlSrc.indexOf('Scroll to see all departments') !== -1;
     /* The mobile collapse must NOT steal desktop widths: 900px+ keeps the
      * horizontal row, only <900px stacks vertically. Scan every @media rule
      * (earlier rules like 1160px/640px exist) and take the one guarding the
@@ -556,18 +568,19 @@ async function main() {
       const blocks = css.match(/@media\s*\(\s*max-width\s*:\s*(\d+)px\s*\)\s*\{[\s\S]*?\.org-branch-row/g) || [];
       return blocks.some(function (b) { return Number(b.match(/(\d+)px/)[1]) === 899; });
     })();
-    /* Narrow-screen JS guard must match: fitChart scales at >=900px. */
-    const jsScalesAt900 = src18.indexOf('window.innerWidth < 900') !== -1;
+    /* Narrow-screen JS guard must match: scroll bar hidden below 900px. */
+    const jsScrollsAt900 = src18.indexOf('window.innerWidth < 900') !== -1;
     /* Cache-busters force browsers past stale CSS/JS after deploys. */
     const home = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
     const busted = home.indexOf('/css/main.css?v=') !== -1 &&
       home.indexOf('/js/pages/org-chart.js?v=') !== -1;
-    record('18. the whole chart fits the page width, no sideways scrolling',
-      directorsOnOneRow && oneLineOk && stackBelow900 && jsScalesAt900 && busted,
-      'oneRow=' + directorsOnOneRow + ' oneLine=' + oneLineOk +
-      ' stackBelow900=' + stackBelow900 + ' js900=' + jsScalesAt900 +
+    record('18. full-size cards scroll inside the chart frame; page never does',
+      directorsOnOneRow && fullSizeOk && oneLineOk && scrollFrameOk && stackBelow900 && jsScrollsAt900 && busted,
+      'oneRow=' + directorsOnOneRow + ' fullSize=' + fullSizeOk +
+      ' oneLine=' + oneLineOk + ' scrollFrame=' + scrollFrameOk +
+      ' stackBelow900=' + stackBelow900 + ' js900=' + jsScrollsAt900 +
       ' busted=' + busted);
-  } catch (e) { record('18. the whole chart fits the page width, no sideways scrolling', false, e.message); }
+  } catch (e) { record('18. full-size cards scroll inside the chart frame; page never does', false, e.message); }
 
   /* 19. live-fixture coverage: every published entry renders -------------- */
   try {
@@ -612,11 +625,16 @@ async function main() {
     const railsOk = layout19.top.length === 2 &&
       layout19.spine.map(function (n) { return n.id; }).join(',') === '3,11' &&
       layout19.branch.length === 11;
+    /* FULL SIZE: no scale-to-fit code in the renderer; the tree is wrapped in
+     * a sideways-scrolling frame instead (CSS widths checked in test 18). */
+    const fullSize19 = html19.indexOf('class="org-scroll"') !== -1 &&
+      src19.indexOf('MIN_FIT') === -1 &&
+      src19.indexOf('tree.style.transform') === -1;
     record('19. every live entry renders (24 cards, Commissioner included)',
-      !!org19 && allRendered && commissionerOk && railsOk,
+      !!org19 && allRendered && commissionerOk && railsOk && fullSize19,
       'cards=' + Object.keys(renderedIds).length +
       ' missing=[' + missing19.map(function (e) { return e.id; }).join(',') + ']' +
-      ' commissioner=' + commissionerOk +
+      ' commissioner=' + commissionerOk + ' fullSize=' + fullSize19 +
       ' spine=[' + layout19.spine.map(function (n) { return n.id; }) + ']' +
       ' branch=' + layout19.branch.length + ' top=' + layout19.top.length);
   } catch (e) { record('19. every live entry renders (24 cards, Commissioner included)', false, e.message); }
