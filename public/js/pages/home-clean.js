@@ -591,3 +591,84 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 });
+
+// === PERFECT HOMEPAGE DATA POPULATOR ===
+(async function() {
+  console.log("?? Perfect Homepage Activated");
+  
+  try {
+    // Fetch all data
+    const [settingsRes, newsRes, schoolsRes, eventsRes] = await Promise.all([
+      fetch('/api/settings/public'),
+      fetch('/api/news?limit=3'),
+      fetch('/api/schools?limit=1'),
+      fetch('/api/events?limit=3')
+    ]);
+    
+    const settings = await settingsRes.json();
+    const news = await newsRes.json();
+    const schools = await schoolsRes.json();
+    const events = await eventsRes.json();
+    
+    const s = settings.settings || {};
+    
+    // 1. POPULATE HERO SECTION
+    if (s.hero_heading) document.getElementById('hero-heading').innerText = s.hero_heading;
+    if (s.site_tagline) document.getElementById('hero-sub').innerText = s.site_tagline;
+    if (s.governor_photo) document.getElementById('gov-photo').src = s.governor_photo;
+    if (s.commissioner_name) document.getElementById('gov-name').innerHTML = s.commissioner_name;
+    
+    // Gallery
+    if (s.about_gallery_image_1) document.getElementById('gallery-img-1').src = s.about_gallery_image_1;
+    if (s.about_gallery_image_2) document.getElementById('gallery-img-2').src = s.about_gallery_image_2;
+    
+    // 2. POPULATE NEWS
+    const newsContainer = document.getElementById('news-container');
+    if (news && news.length > 0) {
+      newsContainer.innerHTML = news.map(n => `
+        <div class="news-card">
+          <img src="${n.cover_image || '/img/photos/model-school-1.jpg'}" alt="${n.title}" class="news-img">
+          <div class="news-content">
+            <h3>${n.title}</h3>
+            <p>${n.excerpt || n.body.substring(0, 100)}...</p>
+            <span class="news-date"><i class="far fa-calendar"></i> ${new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      newsContainer.innerHTML = `
+        <div class="news-card">
+          <div class="news-content" style="width: 100%;">
+            <h3><i class="fas fa-info-circle" style="color: #0b6b3a;"></i> No News Yet</h3>
+            <p>Check back soon for the latest updates from the ministry.</p>
+          </div>
+        </div>
+      `;
+    }
+    
+    // 3. POPULATE SCHOOLS
+    const schoolsContainer = document.getElementById('schools-container');
+    if (schools && schools.length > 0) {
+      const school = schools[0];
+      schoolsContainer.innerHTML = `
+        <div class="school-card">
+          <img src="${school.logo || '/img/photos/model-school-1.jpg'}" alt="${school.name}" class="school-img">
+          <div class="school-info">
+            <h3>${school.name}</h3>
+            <p>${school.address || 'Providing quality education in Taraba State'}</p>
+          </div>
+        </div>
+      `;
+    }
+    
+    // 4. POPULATE SOCIAL MEDIA
+    if (s.facebook_url) document.getElementById('fb-link').href = s.facebook_url;
+    if (s.twitter_url) document.getElementById('twitter-link').href = s.twitter_url;
+    if (s.youtube_url) document.getElementById('youtube-link').href = s.youtube_url;
+    if (s.contact_email) document.getElementById('email-link').href = 'mailto:' + s.contact_email;
+    
+    console.log("? Perfect homepage fully populated");
+  } catch (err) {
+    console.error("Error populating homepage:", err);
+  }
+})();
