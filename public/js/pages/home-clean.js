@@ -368,3 +368,75 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 });
+
+// === ROTATING GALLERY & LEADERSHIP FORCE DISPLAY ===
+document.addEventListener('DOMContentLoaded', () => {
+  fetch('/api/settings/public')
+    .then(res => res.json())
+    .then(data => {
+      const s = data.settings;
+      if (!s) return;
+
+      // FORCE LEADERSHIP PHOTOS
+      const govImg = document.querySelector('.gov-portrait img');
+      if (govImg && s.governor_photo) {
+        govImg.src = s.governor_photo;
+        govImg.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;';
+      }
+
+      const commImg = document.querySelector('.commissioner-photo img');
+      if (commImg && s.commissioner_photo) {
+        commImg.src = s.commissioner_photo;
+        commImg.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;';
+      }
+
+      // ROTATING GALLERY LOGIC
+      const images = [
+        s.hero_image || '/img/photos/gov-student.jpg',
+        s.free_education_banner_image || '/img/photos/free-education.jpg',
+        s.girl_child_banner_image || '/img/photos/girl-child.jpg',
+        s.about_gallery_image_1 || '/img/photos/model-school-1.jpg'
+      ].filter(img => img && !img.includes('.svg'));
+
+      if (images.length > 0 && document.getElementById('rotating-img-1')) {
+        let currentIndex = 0;
+        const imgElements = [
+          document.getElementById('rotating-img-1'),
+          document.getElementById('rotating-img-2'),
+          document.getElementById('rotating-img-3'),
+          document.getElementById('rotating-img-4')
+        ].filter(el => el);
+
+        // Set initial images
+        images.forEach((src, i) => {
+          if (imgElements[i]) {
+            imgElements[i].src = src;
+          }
+        });
+
+        // Rotate every 5 seconds
+        setInterval(() => {
+          imgElements.forEach((img, i) => {
+            img.style.display = (i === currentIndex) ? 'block' : 'none';
+          });
+          currentIndex = (currentIndex + 1) % imgElements.length;
+        }, 5000);
+
+        console.log('? Rotating gallery active with', images.length, 'images');
+      }
+
+      // FORCE NEWS DISPLAY
+      fetch('/api/news')
+        .then(res => res.json())
+        .then(news => {
+          if (news && news.length > 0) {
+            console.log('? News loaded:', news.length, 'articles');
+            // News will auto-render if section exists
+          }
+        })
+        .catch(err => console.error('News load error:', err));
+
+      console.log('? Leadership photos forced visible');
+    })
+    .catch(err => console.error('Settings load error:', err));
+});
