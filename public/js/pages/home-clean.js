@@ -490,3 +490,104 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     .catch(err => console.error('News fetch error:', err));
 });
+
+// === MASTER DATABASE DISPLAY FORCER ===
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('?? Master Display Forcer activated');
+
+  // Helper to clear "Loading..." or "Placeholder" text
+  const clearLoading = (selector) => {
+    document.querySelectorAll(selector).forEach(el => {
+      if (el.innerText.toLowerCase().includes('loading') || el.innerText.toLowerCase().includes('placeholder')) {
+        el.innerText = '';
+      }
+    });
+  };
+
+  // 1. FORCE SETTINGS (Text & Images)
+  fetch('/api/settings/public')
+    .then(res => res.json())
+    .then(data => {
+      const s = data.settings;
+      if (!s) return;
+
+      // Text
+      const h1 = document.getElementById('hero-heading');
+      if (h1 && s.hero_heading) { h1.innerText = s.hero_heading; h1.style.display = 'block'; }
+      const sub = document.getElementById('hero-sub');
+      if (sub && s.site_tagline) { sub.innerText = s.site_tagline; sub.style.display = 'block'; }
+
+      // Images Helper
+      const setImg = (sel, src) => {
+        if (!src || src.includes('PLACEHOLDER')) return;
+        const img = document.querySelector(sel);
+        if (img) {
+          img.src = src;
+          img.setAttribute('data-loaded', 'true');
+          img.style.display = 'block';
+          img.style.visibility = 'visible';
+          img.style.opacity = '1';
+        }
+      };
+
+      setImg('.gov-portrait img, .hero-portrait img', s.governor_photo);
+      setImg('.commissioner-photo img, #comm-photo img', s.commissioner_photo);
+      setImg('.free-education img, #free-edu-img', s.free_education_banner_image);
+      setImg('.girl-child img, #girl-child-img', s.girl_child_banner_image);
+      setImg('.about-gallery-1 img, #gallery-img-1', s.about_gallery_image_1);
+      setImg('.about-gallery-2 img, #gallery-img-2', s.about_gallery_image_2);
+      
+      // Commissioner Info
+      const commName = document.querySelector('.commissioner-name, #comm-name');
+      if (commName && s.commissioner_name) { commName.innerText = s.commissioner_name; commName.style.display = 'block'; }
+      const commTitle = document.querySelector('.commissioner-title, #comm-title');
+      if (commTitle && s.commissioner_title) { commTitle.innerText = s.commissioner_title; commTitle.style.display = 'block'; }
+
+      console.log('? Settings forced');
+    });
+
+  // 2. FORCE NEWS
+  fetch('/api/news')
+    .then(res => res.json())
+    .then(news => {
+      clearLoading('.news-container, .news-section, #news');
+      const newsSec = document.querySelector('.news-section, #news-section, .news-container');
+      if (newsSec) newsSec.classList.add('loaded');
+      
+      if (news && news.length > 0) {
+        console.log('? News unlocked. Articles:', news.length);
+      } else {
+        if (newsSec) newsSec.innerHTML = '<p style="text-align:center; padding: 20px; color: #666;">No news articles available at this time.</p>';
+      }
+    });
+
+  // 3. FORCE SCHOOLS
+  fetch('/api/schools')
+    .then(res => res.json())
+    .then(schools => {
+      clearLoading('.schools-directory, #schools');
+      const schoolsSec = document.querySelector('.schools-directory, #schools');
+      if (schoolsSec) schoolsSec.classList.add('loaded');
+
+      if (schools && schools.length > 0) {
+        console.log('? Schools unlocked. Count:', schools.length);
+      } else {
+        if (schoolsSec) schoolsSec.innerHTML = '<p style="text-align:center; padding: 20px; color: #666;">No schools registered yet. Check back soon or contact the ministry.</p>';
+      }
+    });
+
+  // 4. FORCE EVENTS
+  fetch('/api/events')
+    .then(res => res.json())
+    .then(events => {
+      clearLoading('.events-section, #events');
+      const eventsSec = document.querySelector('.events-section, #events');
+      if (eventsSec) eventsSec.classList.add('loaded');
+
+      if (events && events.length > 0) {
+        console.log('? Events unlocked. Count:', events.length);
+      } else {
+        if (eventsSec) eventsSec.innerHTML = '<p style="text-align:center; padding: 20px; color: #666;">No upcoming events at this time.</p>';
+      }
+    });
+});

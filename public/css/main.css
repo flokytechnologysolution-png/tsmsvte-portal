@@ -1016,3 +1016,17 @@ a[href*="sign-in"]:hover, a[href*="login"]:hover, .nav-link.sign-in:hover, .btn-
   visibility: visible !important;
   opacity: 1 !important;
 }
+/* === MASTER DISPLAY FORCER CSS === */
+/* Hide loading text when sections are populated */
+.news-section.loaded .loading-text,
+.schools-directory.loaded .loading-text,
+.events-section.loaded .loading-text {
+  display: none !important;
+}
+
+/* Force images to never be hidden */
+img[data-loaded="true"] {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
