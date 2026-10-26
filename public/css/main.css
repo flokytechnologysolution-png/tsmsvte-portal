@@ -950,3 +950,24 @@ section:nth-child(even) {
   color: #0b6b3a !important;
   border-color: #f2b705 !important;
 }
+
+/* === RECTANGULAR SIGN IN BUTTON === */
+/* Targets the sign in link regardless of its specific class name */
+a[href*="sign-in"], a[href*="login"], .nav-link.sign-in, .btn-sign-in {
+  border-radius: 0px !important; /* STRICTLY RECTANGULAR */
+  background-color: #0b6b3a !important; /* Ministry Green */
+  color: #ffffff !important; /* White text */
+  padding: 12px 28px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+  border: 2px solid #0b6b3a !important;
+  transition: all 0.3s ease !important;
+}
+
+/* Hover effect: Changes to Ministry Gold */
+a[href*="sign-in"]:hover, a[href*="login"]:hover, .nav-link.sign-in:hover, .btn-sign-in:hover {
+  background-color: #f2b705 !important; /* Ministry Gold */
+  color: #0b6b3a !important; /* Green text on hover */
+  border-color: #f2b705 !important;
+}
