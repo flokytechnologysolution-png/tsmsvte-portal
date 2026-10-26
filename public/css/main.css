@@ -1330,3 +1330,28 @@ footer {
   background: #f2b705 !important;
   color: #0b6b3a !important;
 }
+
+/* === 404 RESCUE: PROFESSIONAL FONTS & COLORS === */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@700;800&display=swap');
+
+body { font-family: 'Inter', sans-serif !important; }
+h1, h2, h3, .hero h1 { font-family: 'Playfair Display', serif !important; }
+
+/* Perfect Hero Visibility */
+.hero { background: linear-gradient(135deg, rgba(11, 107, 58, 0.98), rgba(0, 0, 0, 0.95)) !important; }
+.hero h1, #hero-heading { color: #ffffff !important; text-shadow: 3px 3px 6px rgba(0,0,0,0.7) !important; font-size: 2.5rem !important; }
+.hero p, #hero-sub { color: #f0f0f0 !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6) !important; font-size: 1.2rem !important; }
+
+/* Commissioner & Governor Cards */
+.gov-card { box-shadow: 0 15px 50px rgba(0,0,0,0.4) !important; border: 3px solid rgba(242, 183, 5, 0.3) !important; }
+.gov-info h3 { color: #ffffff !important; font-weight: 700 !important; }
+
+/* News & School Cards */
+.news-card, .school-card { background: #ffffff !important; border-left: 4px solid #0b6b3a !important; box-shadow: 0 4px 15px rgba(0,0,0,0.08) !important; }
+.news-card:hover { transform: translateY(-5px) !important; border-left-color: #f2b705 !important; }
+.news-content h3 { color: #0b6b3a !important; font-weight: 700 !important; }
+
+/* Navigation */
+nav a { color: #333333 !important; font-weight: 600 !important; white-space: nowrap !important; }
+nav a:hover { background: #f2b705 !important; color: #0b6b3a !important; }
+nav a.active { background: #0b6b3a !important; color: #ffffff !important; }

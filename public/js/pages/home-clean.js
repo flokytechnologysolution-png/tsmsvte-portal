@@ -778,3 +778,41 @@ document.addEventListener('DOMContentLoaded', () => {
     console.error("Error loading content:", err);
   }
 })();
+
+// === SAFE CONTENT LOADER ===
+(async function() {
+  try {
+    const res = await fetch('/api/settings/public?t=' + Date.now());
+    const data = await res.json();
+    const s = data.settings || {};
+    
+    // Force Commissioner Photo
+    if (s.commissioner_photo) {
+      const commImg = document.querySelector('.commissioner-photo img, #comm-photo img');
+      if (commImg) { commImg.src = s.commissioner_photo; commImg.style.display = 'block'; }
+    }
+    // Force Governor Photo
+    if (s.governor_photo) {
+      const govImg = document.querySelector('.gov-portrait img, #gov-photo');
+      if (govImg) { govImg.src = s.governor_photo; }
+    }
+    
+    // Force News Display
+    const newsRes = await fetch('/api/news?limit=5&t=' + Date.now());
+    const news = await newsRes.json();
+    const newsContainer = document.querySelector('.news-container, #news-section, .news-section');
+    
+    if (newsContainer && news && news.length > 0) {
+      newsContainer.innerHTML = news.map(n => `
+        <div class="news-card" style="display:flex; gap:15px; margin-bottom:15px; padding:15px; border-radius:8px;">
+          <img src="${n.cover_image || s.default_news_cover || '/img/photos/model-school-1.jpg'}" style="width:100px; height:100px; object-fit:cover; border-radius:6px;">
+          <div>
+            <h3 style="margin:0 0 5px 0; color:#0b6b3a; font-size:1.1rem;">${n.title}</h3>
+            <p style="margin:0; color:#555; font-size:0.9rem;">${n.excerpt || n.body.substring(0, 100)}...</p>
+          </div>
+        </div>
+      `).join('');
+      console.log("? News loaded safely");
+    }
+  } catch(e) { console.error("Safe loader error:", e); }
+})();
