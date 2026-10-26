@@ -784,3 +784,50 @@ table.data td.actions { white-space: nowrap; }
   background: transparent !important;
   color: #0b6b3a !important;
 }
+
+/* HOME BUTTON RECTANGULAR - Only Home button */
+.navbar a[href="/"], .navbar a[href="index.html"] {
+  border-radius: 0 !important;
+  background: #f2b705 !important;
+  color: #0b6b3a !important;
+  padding: 10px 25px !important;
+  font-weight: 600 !important;
+  border: 2px solid #f2b705 !important;
+}
+
+.navbar a[href="/"]:hover, .navbar a[href="index.html"]:hover {
+  background: transparent !important;
+  color: #f2b705 !important;
+}
+
+/* Other nav links - keep simple */
+.navbar a:not([href="/"]):not([href="index.html"]) {
+  border-radius: 0 !important;
+  padding: 10px 15px !important;
+}
+
+/* Sign in button - rectangular */
+.navbar a[href*="sign-in"] {
+  border-radius: 0 !important;
+  background: #0b6b3a !important;
+  color: #ffffff !important;
+  padding: 10px 25px !important;
+  border: 2px solid #0b6b3a !important;
+}
+
+.navbar a[href*="sign-in"]:hover {
+  background: transparent !important;
+  color: #0b6b3a !important;
+}
+
+/* Remove placeholder styling */
+.placeholder-text, .is-placeholder {
+  display: none !important;
+}
+
+/* Gallery images - ensure they show */
+.about-gallery img, .gallery-item img {
+  min-height: 200px;
+  object-fit: cover;
+  border-radius: 8px;
+}

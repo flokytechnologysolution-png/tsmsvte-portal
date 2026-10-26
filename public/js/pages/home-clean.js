@@ -357,3 +357,14 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('? Ultimate fix applied.');
     });
 });
+
+// === GALLERY FALLBACK FIX ===
+document.addEventListener('DOMContentLoaded', () => {
+  // Replace any broken gallery images
+  document.querySelectorAll('.about-gallery img, .gallery-item img').forEach(img => {
+    img.addEventListener('error', function() {
+      this.src = '/img/photos/governor.jpg';
+      this.style.display = 'block';
+    });
+  });
+});
