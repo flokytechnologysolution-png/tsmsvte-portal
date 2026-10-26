@@ -672,3 +672,109 @@ document.addEventListener('DOMContentLoaded', () => {
     console.error("Error populating homepage:", err);
   }
 })();
+
+// === LOAD NEWS & COMMISSIONER FROM DATABASE ===
+(async function() {
+  console.log("?? Loading dynamic content...");
+  
+  try {
+    // Fetch settings
+    const settingsRes = await fetch('/api/settings/public?t=' + Date.now());
+    const settingsData = await settingsRes.json();
+    const s = settingsData.settings || {};
+    
+    // Commissioner Photo & Info
+    if (s.commissioner_photo) {
+      const commImg = document.getElementById('comm-photo');
+      if (commImg) {
+        commImg.src = s.commissioner_photo;
+        commImg.style.display = 'block';
+      }
+    }
+    if (s.commissioner_name) {
+      const commName = document.getElementById('comm-name');
+      if (commName) {
+        commName.innerHTML = s.commissioner_name;
+      }
+    }
+    
+    // Governor Photo
+    if (s.governor_photo) {
+      const govImg = document.getElementById('gov-photo');
+      if (govImg) {
+        govImg.src = s.governor_photo;
+      }
+    }
+    
+    // Gallery Images
+    if (s.about_gallery_image_1) {
+      const gal1 = document.getElementById('gallery-img-1');
+      if (gal1) gal1.src = s.about_gallery_image_1;
+    }
+    if (s.about_gallery_image_2) {
+      const gal2 = document.getElementById('gallery-img-2');
+      if (gal2) gal2.src = s.about_gallery_image_2;
+    }
+    
+    console.log("? Settings loaded");
+    
+    // Fetch and Display News
+    const newsRes = await fetch('/api/news?limit=6&t=' + Date.now());
+    const news = await newsRes.json();
+    
+    const newsContainer = document.getElementById('news-container');
+    if (newsContainer) {
+      if (news && news.length > 0) {
+        newsContainer.innerHTML = news.map(n => `
+          <div class="news-card">
+            <img src="${n.cover_image || s.default_news_cover || '/img/photos/model-school-1.jpg'}" alt="${n.title}" class="news-img" style="width: 120px; height: 100px; object-fit: cover; border-radius: 8px 0 0 8px;">
+            <div class="news-content" style="padding: 15px; flex: 1;">
+              <h3 style="margin: 0 0 8px 0; font-size: 1.1rem;">${n.title || 'Ministry Update'}</h3>
+              <p style="margin: 0 0 10px 0; color: #555; font-size: 0.95rem;">${n.excerpt || (n.body ? n.body.substring(0, 120) + '...' : 'Latest updates from the ministry')}</p>
+              <span class="news-date" style="font-size: 0.85rem; color: #888;"><i class="far fa-calendar"></i> ${new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            </div>
+          </div>
+        `).join('');
+        console.log("? News loaded:", news.length, "articles");
+      } else {
+        newsContainer.innerHTML = `
+          <div class="news-card" style="background: #f8fafb; border-left: 4px solid #f2b705;">
+            <div class="news-content" style="padding: 30px; text-align: center;">
+              <i class="fas fa-newspaper" style="font-size: 3rem; color: #0b6b3a; margin-bottom: 15px;"></i>
+              <h3 style="color: #0b6b3a; margin-bottom: 10px;">No News Yet</h3>
+              <p style="color: #666;">Check back soon for the latest updates from the Taraba State Ministry of Education.</p>
+            </div>
+          </div>
+        `;
+      }
+    }
+    
+    // Fetch and Display Schools
+    const schoolsRes = await fetch('/api/schools?limit=3&t=' + Date.now());
+    const schools = await schoolsRes.json();
+    
+    const schoolsContainer = document.getElementById('schools-container');
+    if (schoolsContainer && schools && schools.length > 0) {
+      schoolsContainer.innerHTML = schools.map(school => `
+        <div class="school-card">
+          <img src="${school.logo || '/img/photos/model-school-1.jpg'}" alt="${school.name}" class="school-img" style="width: 100%; height: 200px; object-fit: cover;">
+          <div class="school-info" style="padding: 20px;">
+            <h3 style="margin: 0 0 8px 0; color: #0b6b3a;">${school.name || 'Model School'}</h3>
+            <p style="margin: 0; color: #666; font-size: 0.95rem;">${school.address || 'Providing quality education in Taraba State'}</p>
+          </div>
+        </div>
+      `).join('');
+      console.log("? Schools loaded:", schools.length);
+    }
+    
+    // Update Stats if available
+    if (s.total_lgas) document.getElementById('stat-lgas').innerText = s.total_lgas;
+    if (s.total_schools) document.getElementById('stat-schools').innerText = s.total_schools.toLocaleString();
+    if (s.total_teachers) document.getElementById('stat-teachers').innerText = s.total_teachers.toLocaleString();
+    if (s.total_students) document.getElementById('stat-students').innerText = s.total_students.toLocaleString();
+    
+    console.log("?? All dynamic content loaded successfully!");
+  } catch (err) {
+    console.error("Error loading content:", err);
+  }
+})();

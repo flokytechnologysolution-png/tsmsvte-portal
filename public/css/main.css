@@ -1082,3 +1082,251 @@ nav a {
   white-space: nowrap !important;
   flex-shrink: 0 !important;
 }
+
+/* === PROFESSIONAL FONTS & COLORS === */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
+
+h1, h2, h3, .hero h1 {
+  font-family: 'Playfair Display', 'Inter', serif !important;
+  font-weight: 700 !important;
+}
+
+/* Hero Section - Perfect Visibility */
+.hero {
+  background: linear-gradient(135deg, rgba(11, 107, 58, 0.98), rgba(0, 0, 0, 0.95)) !important;
+  color: #ffffff !important;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.6) !important;
+}
+
+.hero h1, #hero-heading {
+  color: #ffffff !important;
+  font-size: 2.8rem !important;
+  line-height: 1.2 !important;
+  margin-bottom: 20px !important;
+  text-shadow: 3px 3px 6px rgba(0,0,0,0.7) !important;
+}
+
+.hero p, #hero-sub {
+  color: #f0f0f0 !important;
+  font-size: 1.2rem !important;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.6) !important;
+}
+
+/* Department Badge */
+.dept-badge {
+  background: #f2b705 !important;
+  color: #0b6b3a !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 10px rgba(242, 183, 5, 0.3) !important;
+}
+
+/* Buttons */
+.btn-primary {
+  background: #f2b705 !important;
+  color: #0b6b3a !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 15px rgba(242, 183, 5, 0.4) !important;
+}
+
+.btn-primary:hover {
+  background: #ffc107 !important;
+  transform: translateY(-3px) !important;
+  box-shadow: 0 6px 20px rgba(242, 183, 5, 0.5) !important;
+}
+
+.btn-secondary {
+  background: transparent !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+  font-weight: 600 !important;
+}
+
+.btn-secondary:hover {
+  background: #ffffff !important;
+  color: #0b6b3a !important;
+}
+
+/* Stats */
+.stat-number {
+  color: #f2b705 !important;
+  font-weight: 800 !important;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5) !important;
+}
+
+/* Governor & Commissioner Cards */
+.gov-card {
+  box-shadow: 0 15px 50px rgba(0,0,0,0.4) !important;
+  border: 3px solid rgba(242, 183, 5, 0.3) !important;
+}
+
+.gov-info h3 {
+  color: #ffffff !important;
+  font-size: 1.4rem !important;
+  font-weight: 700 !important;
+  margin-bottom: 5px !important;
+}
+
+.gov-info p {
+  color: rgba(255,255,255,0.95) !important;
+  font-size: 0.95rem !important;
+}
+
+/* News Cards */
+.news-card {
+  background: #ffffff !important;
+  border-left: 4px solid #0b6b3a !important;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.08) !important;
+  transition: all 0.3s !important;
+}
+
+.news-card:hover {
+  transform: translateY(-5px) !important;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+  border-left-color: #f2b705 !important;
+}
+
+.news-content h3 {
+  color: #0b6b3a !important;
+  font-weight: 700 !important;
+  font-size: 1.1rem !important;
+}
+
+.news-content p {
+  color: #555555 !important;
+  font-size: 0.95rem !important;
+}
+
+.news-date {
+  color: #888888 !important;
+  font-size: 0.85rem !important;
+}
+
+/* Quick Links */
+.quick-link {
+  background: #ffffff !important;
+  color: #333333 !important;
+  border: 2px solid transparent !important;
+  transition: all 0.3s !important;
+}
+
+.quick-link:hover {
+  background: #0b6b3a !important;
+  color: #ffffff !important;
+  border-color: #0b6b3a !important;
+  transform: translateY(-3px) !important;
+}
+
+.quick-link i {
+  color: #0b6b3a !important;
+  font-size: 2rem !important;
+}
+
+.quick-link:hover i {
+  color: #f2b705 !important;
+}
+
+/* Section Titles */
+.section-title h2 {
+  color: #0b6b3a !important;
+  font-size: 1.8rem !important;
+  font-weight: 700 !important;
+}
+
+.view-all {
+  color: #0b6b3a !important;
+  font-weight: 700 !important;
+}
+
+.view-all:hover {
+  color: #f2b705 !important;
+}
+
+/* School Card */
+.school-card {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.08) !important;
+}
+
+.school-info h3 {
+  color: #0b6b3a !important;
+  font-weight: 700 !important;
+}
+
+.school-info p {
+  color: #666666 !important;
+}
+
+/* Announcement */
+.announcement {
+  background: linear-gradient(135deg, #f0f8ff, #e6f3ff) !important;
+  border-left: 5px solid #0b6b3a !important;
+}
+
+.announcement h3 {
+  color: #0b6b3a !important;
+  font-weight: 700 !important;
+}
+
+.announcement i {
+  color: #0b6b3a !important;
+}
+
+/* Navigation */
+nav a {
+  color: #333333 !important;
+  font-weight: 600 !important;
+}
+
+nav a:hover {
+  background: #f2b705 !important;
+  color: #0b6b3a !important;
+}
+
+nav a.active {
+  background: #0b6b3a !important;
+  color: #ffffff !important;
+}
+
+nav a[href*="admin"] {
+  background: #0b6b3a !important;
+  color: #ffffff !important;
+  border: 2px solid #0b6b3a !important;
+}
+
+nav a[href*="admin"]:hover {
+  background: #f2b705 !important;
+  color: #0b6b3a !important;
+  border-color: #f2b705 !important;
+}
+
+/* Footer */
+footer {
+  background: linear-gradient(135deg, #0b6b3a, #085028) !important;
+}
+
+.footer-section h3 {
+  color: #f2b705 !important;
+  font-weight: 700 !important;
+}
+
+.footer-section a {
+  color: rgba(255,255,255,0.95) !important;
+}
+
+.footer-section a:hover {
+  color: #f2b705 !important;
+}
+
+.social-icons a {
+  background: rgba(255,255,255,0.15) !important;
+  color: #ffffff !important;
+}
+
+.social-icons a:hover {
+  background: #f2b705 !important;
+  color: #0b6b3a !important;
+}
