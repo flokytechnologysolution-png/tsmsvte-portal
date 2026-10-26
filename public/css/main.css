@@ -997,3 +997,22 @@ a[href*="sign-in"]:hover, a[href*="login"]:hover, .nav-link.sign-in:hover, .btn-
   flex-shrink: 0 !important;
   margin-right: 20px !important;
 }
+/* === FORCE COMMISSIONER AND NEWS DISPLAY === */
+.commissioner-photo, .commissioner-section, #comm-photo {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+.commissioner-photo img, #comm-photo img {
+  display: block !important;
+  width: 100% !important;
+  max-width: 300px !important;
+  height: auto !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+}
+.news-section, #news-section, .news-container {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}

@@ -451,3 +451,42 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   console.log('? Nav text forced to "Sign in"');
 });
+
+// === FORCE COMMISSIONER PHOTO & NEWS DISPLAY ===
+document.addEventListener('DOMContentLoaded', () => {
+  // 1. Force Commissioner Photo
+  fetch('/api/settings/public')
+    .then(res => res.json())
+    .then(data => {
+      const s = data.settings;
+      if (s && s.commissioner_photo) {
+        const commImgs = document.querySelectorAll('.commissioner-photo img, #comm-photo img, img[src*="commissioner"]');
+        commImgs.forEach(img => {
+          img.src = s.commissioner_photo;
+          img.style.display = 'block';
+          img.style.visibility = 'visible';
+          img.style.opacity = '1';
+        });
+        console.log('? Commissioner photo forced.');
+      }
+    })
+    .catch(err => console.error('Settings fetch error:', err));
+
+  // 2. Force News Display
+  fetch('/api/news')
+    .then(res => res.json())
+    .then(news => {
+      if (news && news.length > 0) {
+        console.log('? News found:', news.length, 'articles. Ensuring visibility.');
+        const newsSections = document.querySelectorAll('.news-section, #news-section, .news-container');
+        newsSections.forEach(sec => {
+          sec.style.display = 'block';
+          sec.style.visibility = 'visible';
+          sec.style.opacity = '1';
+        });
+      } else {
+        console.warn('?? No news articles in database. Please add news via Admin Dashboard.');
+      }
+    })
+    .catch(err => console.error('News fetch error:', err));
+});
