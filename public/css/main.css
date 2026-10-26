@@ -907,3 +907,46 @@ section {
 section:nth-child(even) {
   background: #f8fafb !important;
 }
+
+/* === PROFESSIONAL RECTANGULAR NAVIGATION === */
+/* Make ALL nav links strictly rectangular with professional school colors */
+.navbar a, .nav-link, header nav a, .main-nav a {
+  border-radius: 0 !important; /* Strict rectangular shape, no rounded corners */
+  padding: 12px 20px !important;
+  color: #0b6b3a !important; /* Professional Taraba State Green */
+  font-weight: 600 !important;
+  font-size: 0.95rem !important;
+  letter-spacing: 0.5px !important;
+  transition: all 0.3s ease !important;
+  background: transparent !important;
+  text-transform: uppercase;
+}
+
+/* Hover effect: Professional Gold */
+.navbar a:hover, .nav-link:hover, header nav a:hover, .main-nav a:hover {
+  background-color: #f2b705 !important; /* Taraba State Gold */
+  color: #0b6b3a !important;
+  text-decoration: none !important;
+  transform: translateY(-2px); /* Slight lift effect */
+}
+
+/* Active page indicator */
+.navbar a.active, .nav-link.active {
+  background-color: #0b6b3a !important;
+  color: #ffffff !important;
+}
+
+/* "Sign in" Button - Stands out professionally */
+.navbar a[href*="sign-in"], .nav-link[href*="sign-in"] {
+  background-color: #0b6b3a !important;
+  color: #ffffff !important;
+  border: 2px solid #0b6b3a !important;
+  padding: 12px 25px !important;
+  margin-left: 10px;
+}
+
+.navbar a[href*="sign-in"]:hover, .nav-link[href*="sign-in"]:hover {
+  background-color: #f2b705 !important;
+  color: #0b6b3a !important;
+  border-color: #f2b705 !important;
+}
