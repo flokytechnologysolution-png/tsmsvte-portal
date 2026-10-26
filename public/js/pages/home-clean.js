@@ -440,3 +440,14 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     .catch(err => console.error('Settings load error:', err));
 });
+
+// === FORCE NAV TEXT & SINGLE LINE FIX ===
+document.addEventListener('DOMContentLoaded', () => {
+  // Force "Staff sign in" to "Sign in"
+  document.querySelectorAll('a, button, span').forEach(el => {
+    if (el.textContent.includes('Staff sign in')) {
+      el.textContent = el.textContent.replace('Staff sign in', 'Sign in');
+    }
+  });
+  console.log('? Nav text forced to "Sign in"');
+});

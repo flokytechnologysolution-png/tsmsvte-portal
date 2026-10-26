@@ -311,7 +311,7 @@
         '</a>' +
         '<button class="btn btn-ghost btn-sm" id="logout-btn" type="button">Sign out</button>';
     } else {
-      account = '<a class="btn btn-sm" href="/login.html">Staff sign in</a>';
+      account = '<a class="btn btn-sm" href="/login.html">Sign in</a>';
     }
 
     host.innerHTML =

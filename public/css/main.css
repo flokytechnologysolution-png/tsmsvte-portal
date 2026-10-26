@@ -971,3 +971,29 @@ a[href*="sign-in"]:hover, a[href*="login"]:hover, .nav-link.sign-in:hover, .btn-
   color: #0b6b3a !important; /* Green text on hover */
   border-color: #f2b705 !important;
 }
+
+/* === SINGLE STRAIGHT LINE NAVIGATION === */
+/* Force the navigation container to be a single row */
+.navbar, .nav-links, header nav, .main-nav, ul.nav {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important; /* PREVENTS WRAPPING TO NEXT LINE */
+  align-items: center !important;
+  overflow-x: auto !important; /* Allows scrolling on mobile instead of breaking line */
+  white-space: nowrap !important;
+  gap: 5px !important;
+}
+
+/* Prevent individual buttons from squishing or breaking text */
+.navbar a, .nav-links a, header nav a, .main-nav a, ul.nav li a {
+  flex-shrink: 0 !important;
+  white-space: nowrap !important; /* Keeps "Register a school" on one line */
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+/* Ensure the logo doesn't push buttons down */
+.navbar .logo, header nav .logo, .brand {
+  flex-shrink: 0 !important;
+  margin-right: 20px !important;
+}
