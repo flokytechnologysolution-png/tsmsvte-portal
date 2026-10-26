@@ -1030,3 +1030,55 @@ img[data-loaded="true"] {
   visibility: visible !important;
   opacity: 1 !important;
 }
+
+/* === FIX VISIBILITY ISSUES === */
+.hero {
+  background: linear-gradient(135deg, rgba(11, 107, 58, 0.95), rgba(0, 0, 0, 0.9)) !important;
+  color: #ffffff !important;
+  padding: 80px 5% !important;
+}
+
+.hero h1, .hero p, .hero-heading, #hero-heading, #hero-sub {
+  color: #ffffff !important;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5) !important;
+}
+
+.hero-content {
+  display: grid !important;
+  grid-template-columns: 1fr 400px !important;
+  gap: 50px !important;
+  align-items: center !important;
+}
+
+.gallery-section {
+  position: relative !important;
+  right: auto !important;
+  top: auto !important;
+  transform: none !important;
+  width: 100% !important;
+  margin-top: 40px !important;
+}
+
+.main-content {
+  display: grid !important;
+  grid-template-columns: 2fr 1fr 1fr !important;
+  gap: 40px !important;
+  padding: 60px 5% !important;
+}
+
+.news-card, .quick-link, .school-card {
+  background: #ffffff !important;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important;
+}
+
+/* Fix navigation */
+nav ul {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+}
+
+nav a {
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
