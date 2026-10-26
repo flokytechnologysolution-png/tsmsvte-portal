@@ -764,3 +764,23 @@ table.data td.actions { white-space: nowrap; }
 .service-card:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.12)}
 .service-card h3{margin:0 0 6px;color:var(--primary)}
 .service-card p{margin:0}
+
+/* NAV RECTANGULAR FIX - Make nav buttons rectangular */
+.navbar a, .nav-link {
+  border-radius: 0 !important;
+  padding: 10px 20px !important;
+}
+
+/* Make Sign in button rectangular */
+.navbar a[href*="sign-in"], .nav-link[href*="sign-in"] {
+  border-radius: 0 !important;
+  background: #0b6b3a !important;
+  color: #ffffff !important;
+  padding: 10px 25px !important;
+  border: 2px solid #0b6b3a !important;
+}
+
+.navbar a[href*="sign-in"]:hover, .nav-link[href*="sign-in"]:hover {
+  background: transparent !important;
+  color: #0b6b3a !important;
+}
