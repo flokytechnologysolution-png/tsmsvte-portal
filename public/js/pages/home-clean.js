@@ -338,3 +338,22 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     .catch(err => console.error('? Failed to load settings:', err));
 });
+
+// === ULTIMATE PERMANENT RENDER FIX ===
+document.addEventListener('DOMContentLoaded', () => {
+  fetch('/api/settings/public')
+    .then(res => res.json())
+    .then(data => {
+      const s = data.settings;
+      if (!s) return;
+      const h1 = document.getElementById('hero-heading');
+      if (h1 && s.hero_heading) { h1.innerText = s.hero_heading; h1.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;color:#ffffff!important;'; }
+      const sub = document.getElementById('hero-sub');
+      if (sub && s.site_tagline) { sub.innerText = s.site_tagline; sub.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;color:#f0f0f0!important;'; }
+      const govImg = document.querySelector('.gov-portrait img');
+      if (govImg && s.governor_photo) { govImg.src = s.governor_photo; govImg.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;'; }
+      const commImg = document.querySelector('.commissioner-photo img');
+      if (commImg && s.commissioner_photo) { commImg.src = s.commissioner_photo; commImg.style.cssText = 'display:block!important;visibility:visible!important;opacity:1!important;'; }
+      console.log('? Ultimate fix applied.');
+    });
+});
